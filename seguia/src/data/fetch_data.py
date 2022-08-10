@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 import os
 import pandas as pd
 import requests
@@ -22,8 +23,12 @@ def load_yaml(file_path):
     dict:
         Dictionary that contains the information of the yaml file.
     """
+    logging.info(f'Reading file...')
+
     with open(file_path, 'r') as file:
         yaml_file = yaml.load(file, Loader=yaml.FullLoader)
+    logging.info(f'File location: {file_path}')
+
     return yaml_file
 
 def create_https_context():
@@ -35,6 +40,8 @@ def create_https_context():
     -------
         None
     """
+    logging.info(f'Creating context...')
+
     ssl._create_default_https_context = ssl._create_unverified_context
 
 def fetch_core_data(url, path, key):
@@ -57,8 +64,11 @@ def fetch_core_data(url, path, key):
     -------
         None
     """
+    logging.info(f'Reading url: {url}')
     df = pd.read_excel(url)
     df.to_hdf(path, key=key)
+    logging.info(f'Data saved into file: {path}')
+    logging.info(f'HDF key: {key}')
 
 def fetch_geo_data(url, path):
     """
@@ -84,18 +94,31 @@ def fetch_geo_data(url, path):
     extract_file_name = doc_name.replace('.zip', '')
     extract_file_path = path + extract_file_name
     try:
+        logging.info(f'Making file on the path: {extract_file_path}' )
         os.mkdir(extract_file_path)
+        logging.info(f'Making request on the url: {url}')
         request = requests.get(url)
+        logging.info(f'Obtaining the content of the request...' )
         content = request.content
+        logging.info(f'Writing file on the path: {file_path}')
         with open(file_path, 'wb') as out_file:
             out_file.write(content)
+        logging.info(f'Extract the files on the zip files into folder...')
         with zipfile.ZipFile(file_path, 'r') as zip_object:
             zip_object.extractall(extract_file_path)
     except OSError as error:
+        logging.error(
+            f'File already exists. No need to search for data. Error: {error}'
+        )
         pass
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        filename='fetch_data.log',
+        level=logging.DEBUG,
+        filemode='w'
+    )
     base_path = os.path.join(
         os.path.dirname(__file__), '..', '..')
     data_conf_path = os.path.abspath(
@@ -112,20 +135,15 @@ if __name__ == '__main__':
     key_core = data_conf['key_core']
     url_geo = data_conf['url_geo']
     create_https_context()
-    logger_string = f'Getting core data:'
+    logging.info(f'Getting core data...')
     time_start=time.perf_counter()
     fetch_core_data(url=url_core, path=raw_data_path, key=key_core)
     time_end=time.perf_counter()
     total_time = time_end-time_start
-    logger_string = f'Data key: {key_core}'
-    print(logger_string)
-    logger_string = f'Time to download data: {total_time}'
-    print(logger_string)
-    logger_string = f'Getting geo data:'
-    print(logger_string)
+    logging.info(f'Time to download core data: {total_time}')
+    logging.info(f'Getting geo data...')
     time_start=time.perf_counter()
     fetch_geo_data(url=url_geo, path=general_data_path)
     time_end=time.perf_counter()
     total_time = time_end-time_start
-    logger_string = f'Time to download data: {total_time}'
-    print(logger_string)
+    logging.info(f'Time to download geo data: {total_time}')
