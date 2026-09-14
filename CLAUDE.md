@@ -92,9 +92,9 @@ seguia/
 
 | Item | Location | Value |
 |---|---|---|
-| Training period | `src/models/model_utils.py` | 2017-01-01 to 2023-06-05 |
-| OOT (out-of-time) test | `src/models/split_data.py` | After 2023-06-05 |
-| Train/Dev/Test split | `src/models/split_data.py` | 60/20/20 (stratified, random seed 69) |
+| Training period | `src/models/model_utils.py` | From 2017-01-01 up to `last_labelled_date − OOT_MONTHS` — derived from data at split time, not hard-coded |
+| OOT (out-of-time) test | `src/models/model_utils.py` | Last `OOT_MONTHS` (6) months of rows whose 6-month target is already known |
+| Train/Dev/Test split | `src/models/split_data.py` | 60/20/20 (random seed 69); rows with <50% non-null features (no NASA data yet) are excluded; summary written to `data/processed/split_info.json` |
 | Prediction horizon | Default target | 6 months (`target_6m`) |
 | Data start threshold | Multiple modules | 2016-01-01 (CONAGUA index change) |
 | XGBoost config | `src/models/train_model.py` | 10K estimators, max\_depth=6, LR=0.001, early stopping |
@@ -104,7 +104,7 @@ seguia/
 - `general_pipeline.py`: Automate periodic data updates (currently manual).
 - `src/demo/app.py`: Add threshold visualization to the prediction map.
 - `src/models/evaluate_model.py`: Evaluation logic not yet implemented.
-- `src/data/downloader.py`: NASA date range is hard-coded (`NASA_START`/`NASA_END`); should follow the latest CONAGUA date.
+- `src/data/downloader.py`: downloads skip existing files, so a monthly rerun does not refresh CONAGUA/NASA data yet (needs a refresh mode + incremental NASA fetch).
 
 ## Language Note
 

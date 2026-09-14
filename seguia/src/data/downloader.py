@@ -7,6 +7,7 @@ Downloads all raw data required by the SeGuía pipeline:
 """
 
 import concurrent.futures
+import datetime
 import io
 import json
 import os
@@ -39,7 +40,8 @@ MEXICO_EPSG = "EPSG:6362"
 WGS84 = "EPSG:4326"
 
 NASA_START = '20000101'
-NASA_END = '20240615'
+# Hasta hoy: la ventana de descarga avanza sola en cada corrida mensual.
+NASA_END = datetime.date.today().strftime('%Y%m%d')
 NASA_PARAMETERS = [
     'PS', 'RH2M', 'RHOA', 'T10M', 'T10M_MAX', 'T10M_MIN',
     'T2M', 'T2M_MAX', 'T2M_MIN', 'PRECTOTCORR', 'TQV',

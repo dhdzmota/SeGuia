@@ -1,22 +1,29 @@
+import json
+
 import pandas as pd
 
 from sklearn.model_selection import train_test_split
 
 from src.data.utils import (
-    get_general_path, join_paths, save_dataframe
+    get_general_path, join_paths, make_desired_folder, save_dataframe
 )
 from src.models.model_utils import (
     RANDOM_SEED,
-    MIN_TRAINING_DATE,
-    MAX_TRAINING_DATE,
-    TARGET
+    HORIZON_MONTHS,
+    TARGET,
+    get_training_window,
 )
 
 RAW_DATA = 'data/raw/'
 INTERIM_DATA = 'data/interim/'
 PROCESSED_DATA = 'data/processed/'
 MUNICIPAL_DATA = 'municipal_data.pkl'
-FUTURE_SCOPE = '6M'
+FUTURE_SCOPE = f'{HORIZON_MONTHS}M'
+SPLIT_INFO_FILE = 'split_info.json'
+# Fraccion minima de features no nulas para considerar una fila utilizable.
+# Las filas sin datos meteorologicos (p. ej. fechas posteriores a la ultima
+# descarga de NASA) quedan muy por debajo y se excluyen del split.
+MIN_FEATURE_COVERAGE = 0.5
 ALL_FEATURES_FILE = 'all_features.parquet'
 TARGET_FILE = 'target_datasets.pkl'
 
@@ -38,18 +45,44 @@ def split_data():
     target_file_path = join_paths(general_path, INTERIM_DATA, TARGET_FILE)
     targets = pd.read_pickle(target_file_path)
 
-    features = features[
-        features.standard_date >= pd.to_datetime(MIN_TRAINING_DATE)
-    ]
     target = targets[FUTURE_SCOPE]
+
+    # Solo se usan filas con features completas (ver MIN_FEATURE_COVERAGE).
+    feature_cols = features.columns.difference(['mun_id', 'standard_date'])
+    coverage = features[feature_cols].notna().mean(axis=1)
+    incomplete = features[coverage < MIN_FEATURE_COVERAGE]
+    if len(incomplete):
+        print(
+            f'Excluyendo {len(incomplete):,} filas sin features suficientes '
+            f'({incomplete.standard_date.min():%Y-%m-%d} -> '
+            f'{incomplete.standard_date.max():%Y-%m-%d}).'
+        )
+    features = features[coverage >= MIN_FEATURE_COVERAGE]
+
+    # La ventana de entrenamiento se deriva de los datos: solo las filas
+    # cuyo target ya se conoce (existen en `target`) cuentan como
+    # etiquetadas, y las mas recientes se reservan como OOT.
+    labelled_dates = features.loc[
+        features.index.intersection(target.index), 'standard_date'
+    ]
+    window = get_training_window(labelled_dates)
+    print(
+        f"Ventana de entrenamiento: {window['min_training_date']:%Y-%m-%d} "
+        f"-> {window['max_training_date']:%Y-%m-%d}; OOT hasta "
+        f"{window['last_labelled_date']:%Y-%m-%d}."
+    )
+
+    features = features[
+        features.standard_date >= window['min_training_date']
+    ]
 
     f = features[['mun_id', 'standard_date', ]]
     X = features.drop(['mun_id', 'standard_date'], axis=1)
-    Y = target[[TARGET]]
-    Y[TARGET] = (target.num_drought_index_future > 0).astype('int')
+    Y = (target[[TARGET]] > 0).astype('int')
 
-    training_window = pd.to_datetime(MIN_TRAINING_DATE), pd.to_datetime(
-        MAX_TRAINING_DATE)
+    training_window = (
+        window['min_training_date'], window['max_training_date']
+    )
 
     f_index_train = f[
         f.standard_date.between(training_window[0], training_window[1])
@@ -89,6 +122,7 @@ def split_data():
         random_state=RANDOM_SEED
     )
 
+    make_desired_folder(PROCESSED_DATA)
     train_x_path = join_paths(general_path, PROCESSED_DATA, TRAIN_X)
     train_y_path = join_paths(general_path, PROCESSED_DATA, TRAIN_Y)
     test_x_path = join_paths(general_path, PROCESSED_DATA, TEST_X)
@@ -138,3 +172,28 @@ def split_data():
         dataframe=y_oot,
         file_format='parquet'
     )
+
+    # Resumen del split para auditar cada corrida (fechas y tamanos).
+    split_info = {
+        'horizon_months': HORIZON_MONTHS,
+        'min_training_date': f"{window['min_training_date']:%Y-%m-%d}",
+        'max_training_date': f"{window['max_training_date']:%Y-%m-%d}",
+        'last_labelled_date': f"{window['last_labelled_date']:%Y-%m-%d}",
+        'rows': {
+            'train': len(x_train),
+            'dev': len(x_dev),
+            'test': len(x_test),
+            'oot': len(x_oot),
+        },
+        'positive_rate': {
+            'train': round(float(y_train[TARGET].mean()), 4),
+            'dev': round(float(y_dev[TARGET].mean()), 4),
+            'test': round(float(y_test[TARGET].mean()), 4),
+            'oot': round(float(y_oot[TARGET].mean()), 4),
+        },
+    }
+    split_info_path = join_paths(general_path, PROCESSED_DATA, SPLIT_INFO_FILE)
+    with open(split_info_path, 'w') as file:
+        json.dump(split_info, file, indent=2)
+    print(f'Split info saved into `{split_info_path}`.')
+    return split_info
