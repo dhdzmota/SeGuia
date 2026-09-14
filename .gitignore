@@ -1,5 +1,6 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+*.py[cod]
 
 # C extensions
 *.so
@@ -88,7 +89,7 @@ target/
 .mypy_cache/
 
 # Proyect folders and files
-data/
+/seguia/data/
 data - copy/
 notebooks/meteorological_imgs/
 references/videos

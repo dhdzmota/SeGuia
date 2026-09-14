@@ -89,7 +89,7 @@ target/
 .mypy_cache/
 
 # Proyect folders and files
-data/
+/data/
 data - copy/
 notebooks/meteorological_imgs/
 references/videos
