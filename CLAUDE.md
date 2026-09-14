@@ -98,9 +98,14 @@ seguia/
 | Training period | `src/models/model_utils.py` | From 2017-01-01 up to `last_labelled_date − OOT_MONTHS` — derived from data at split time, not hard-coded |
 | OOT (out-of-time) test | `src/models/model_utils.py` | Last `OOT_MONTHS` (6) months of rows whose 6-month target is already known |
 | Train/Dev/Test split | `src/models/split_data.py` | 60/20/20 (random seed 69); rows with <50% non-null features (no NASA data yet) are excluded; summary written to `data/processed/split_info.json` |
+| Feature loading | `src/models/model_utils.py` | `read_features()` reads parquet in 64-column blocks and casts to float32 (`all_features.parquet` is 630K × 770; plain `pd.read_parquet` peaks at ~10 GB, this at ~4 GB). Used by `split_data`, `read_xy_set` and the API |
 | Prediction horizon | Default target | 6 months (`target_6m`) |
 | Data start threshold | Multiple modules | 2016-01-01 (CONAGUA index change) |
 | XGBoost config | `src/models/train_model.py` | 10K estimators, max\_depth=6, LR=0.001, early stopping |
+
+### Pipeline timings (full rebuild, 2026-09-13, WSL 15 GB RAM)
+
+Download (first `--refresh`, all NASA data) ~21 min; stage 1 ~17 min; stage 2 ~81 min (meteorological features ~54 min, neighbour features ~8 min, peaks ~6 GB RAM); split ~3 min (peak 7 GB). A monthly incremental run re-downloads only new days but still recomputes every meteorological partition (all raw pickles change).
 
 ### Known TODOs (from code comments)
 

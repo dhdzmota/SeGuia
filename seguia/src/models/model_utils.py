@@ -1,4 +1,7 @@
+import json
+
 import pandas as pd
+import pyarrow.parquet as pq
 from pandas.tseries.offsets import DateOffset
 
 from src.data.utils import (
@@ -15,6 +18,40 @@ OOT_MONTHS = 6
 TARGET = 'num_drought_index_future'
 PROCESSED_DATA = 'data/processed/'
 MODEL_PATH = 'models/'
+# Columnas por bloque al leer parquets de features (ver read_features).
+READ_BLOCK_COLUMNS = 64
+
+
+def read_features(path, columns=None):
+    """Lee un parquet de features por bloques de columnas y en float32.
+
+    all_features.parquet tiene ~770 columnas float64 (~4 GB en memoria) y
+    leerlo de golpe con pandas llega a ~10 GB de pico por la conversion
+    Arrow -> pandas. Leer por bloques y castear a float32 (XGBoost trabaja
+    en float32 internamente, asi que el modelo no cambia) deja el pico en
+    ~2x el tamano final. El indice se restaura igual que con read_parquet.
+    """
+    parquet_file = pq.ParquetFile(path)
+    metadata = json.loads(parquet_file.schema_arrow.metadata[b'pandas'])
+    index_cols = [c for c in metadata['index_columns'] if isinstance(c, str)]
+    data_cols = [
+        c for c in parquet_file.schema_arrow.names
+        if c not in index_cols and (columns is None or c in columns)
+    ]
+    pieces = []
+    for start in range(0, len(data_cols), READ_BLOCK_COLUMNS):
+        block = data_cols[start:start + READ_BLOCK_COLUMNS]
+        table = parquet_file.read(
+            columns=block + (index_cols if not pieces else [])
+        )
+        piece = table.to_pandas(self_destruct=True)
+        del table
+        float_cols = piece.select_dtypes('float64').columns
+        piece[float_cols] = piece[float_cols].astype('float32')
+        if pieces:
+            piece.index = pieces[0].index
+        pieces.append(piece)
+    return pd.concat(pieces, axis=1, copy=False)
 
 
 def read_xy_set(set_name):
@@ -23,7 +60,7 @@ def read_xy_set(set_name):
     y_filename = f'y_{set_name}.parquet'
     x_path = join_paths(general_path, PROCESSED_DATA, x_filename)
     y_path = join_paths(general_path, PROCESSED_DATA, y_filename)
-    x = pd.read_parquet(x_path)
+    x = read_features(x_path)
     y = pd.read_parquet(y_path)
     y = y[TARGET]
     return x, y

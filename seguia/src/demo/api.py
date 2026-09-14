@@ -12,7 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from src.data.utils import get_general_path, join_paths
-from src.models.model_utils import read_xy_set, get_model, predict
+from src.models.model_utils import (
+    read_features, read_xy_set, get_model, predict
+)
 
 INTERIM_DATA = 'data/interim/'
 MUNICIPAL_DATA = 'municipal_data.pkl'
@@ -43,7 +45,7 @@ _state = _AppState()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     gp = get_general_path()
-    features = pd.read_parquet(join_paths(gp, INTERIM_DATA, ALL_FEATURES_FILE))
+    features = read_features(join_paths(gp, INTERIM_DATA, ALL_FEATURES_FILE))
     muni_info = pd.read_pickle(join_paths(gp, INTERIM_DATA, MUNICIPAL_DATA))
     x_oot, y_oot = read_xy_set('oot')
     model = get_model()
