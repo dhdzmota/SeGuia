@@ -30,8 +30,9 @@ python src/features/process_data.py                 # add --force to rebuild eve
 # 2. Engineer all features and targets
 python src/features/create_target_and_features.py   # add --force to recompute all meteorological features
 
-# 3. Split data and train XGBoost model
-python src/models/create_model.py
+# 3. Split, train, evaluate and (conditionally) promote the model
+python src/models/create_model.py                   # --promote auto|never|force
+python src/models/evaluate_model.py 20260914        # re-evaluate an existing candidate
 
 # 4a. Launch the legacy Dash dashboard (original)
 python src/demo/app.py
@@ -70,13 +71,15 @@ seguia/
 │   │   └── create_target_and_features.py  # Stage 2 orchestrator
 │   ├── models/
 │   │   ├── split_data.py       # Temporal + stratified splits (train/dev/test/OOT)
-│   │   ├── train_model.py      # XGBoost training (10K estimators, depth 6, LR 0.001)
+│   │   ├── train_model.py      # XGBoost training → versioned candidate models/SeGuia_<run_id>.pkl
 │   │   ├── model_utils.py      # Load splits, load model, generate predictions
-│   │   ├── evaluate_model.py   # Placeholder — not yet implemented
+│   │   ├── evaluate_model.py   # Metrics on train/dev/test/oot, metrics report, promotion rule
 │   │   └── create_model.py     # Stage 3 orchestrator
 │   └── demo/app.py             # Dash web app — interactive choropleth map, date slider
 ├── notebooks/                  # 12 numbered development notebooks (exploration → src/)
-├── models/SeGuia.pkl           # Serialized trained model (generated, not in git)
+├── models/                     # SeGuia.pkl = promoted model; SeGuia.json = which run is promoted;
+│                               # SeGuia_<YYYYMMDD>.pkl = every trained candidate (generated, not in git)
+├── reports/metrics/            # metrics_<run_id>.json per training run (generated, not in git)
 └── data/
     ├── raw/                    # Original downloads
     ├── interim/                # Intermediate processed files
@@ -101,17 +104,22 @@ seguia/
 | Feature loading | `src/models/model_utils.py` | `read_features()` reads parquet in 64-column blocks and casts to float32 (`all_features.parquet` is 630K × 770; plain `pd.read_parquet` peaks at ~10 GB, this at ~4 GB). Used by `split_data`, `read_xy_set` and the API |
 | Prediction horizon | Default target | 6 months (`target_6m`) |
 | Data start threshold | Multiple modules | 2016-01-01 (CONAGUA index change) |
-| XGBoost config | `src/models/train_model.py` | 10K estimators, max\_depth=6, LR=0.001, early stopping |
+| XGBoost config | `src/models/train_model.py` | 10K estimators, max\_depth=6, LR=0.001, early stopping (never triggered on the 2026-09 run: best_iteration 9999) |
+| Model promotion | `src/models/evaluate_model.py` | Candidate replaces `models/SeGuia.pkl` only if its OOT AUC ≥ the current model's AUC on the same OOT set (`--promote never|force` to override). Every run writes `reports/metrics/metrics_<run_id>.json` |
 
 ### Pipeline timings (full rebuild, 2026-09-13, WSL 15 GB RAM)
 
-Download (first `--refresh`, all NASA data) ~21 min; stage 1 ~17 min; stage 2 ~81 min (meteorological features ~54 min, neighbour features ~8 min, peaks ~6 GB RAM); split ~3 min (peak 7 GB). A monthly incremental run re-downloads only new days but still recomputes every meteorological partition (all raw pickles change).
+Download (first `--refresh`, all NASA data) ~21 min; stage 1 ~17 min; stage 2 ~81 min (meteorological features ~54 min, neighbour features ~8 min, peaks ~6 GB RAM); stage 3 ~2 h 50 min (split 3 min, training ~2 h 40 min for 10K trees on 20 cores, evaluation ~5 min). Total ≈ 5 h. A monthly incremental run re-downloads only new days but still recomputes every meteorological partition (all raw pickles change).
+
+### Model performance (run 20260914, first with 2026 data)
+
+Train/dev/test AUC ≈ 0.95/0.95/0.94 but **OOT AUC 0.634** (AUC-PR 0.21, 4 % positives). Per feature date, OOT AUC is 0.91–0.97 for Sep–Dec 2025 (targets Mar–Jun 2026, drought persisting/receding) and ~0.45 for Jan–Feb 2026 (targets Jul–Aug 2026, *new* drought onset after a historic minimum). The model behaves largely as a persistence model; the random train/test split leaks neighbouring fortnights of the same municipality, so test AUC overstates forward-looking skill. Treat OOT (ideally per-date) as the real metric.
 
 ### Known TODOs (from code comments)
 
 - `general_pipeline.py`: Automate periodic data updates (currently manual).
 - `src/demo/app.py`: Add threshold visualization to the prediction map.
-- `src/models/evaluate_model.py`: Evaluation logic not yet implemented.
+- Modelling: temporal (not random) dev/test split; per-date OOT AUC as promotion metric; features for drought *onset* (precipitation anomalies vs climatology, ENSO); early stopping never triggers with LR 0.001 — consider a higher LR.
 
 ## Language Note
 
