@@ -73,11 +73,17 @@ NASA_PARAMETERS = [
     'T2MWET', 'T2MDEW', 'TROPQ', 'QV2M', 'TO3', 'TROPT',
     'TROPPB', 'TS',
 ]
-NASA_MAX_WORKERS = 8
+# NASA POWER limita las peticiones por IP: con 8 hilos aparecen rafagas de
+# HTTP 429 que agotan los reintentos. 4 hilos dan ~2 req/s sin problemas.
+NASA_MAX_WORKERS = 4
 # Reintentos ante errores transitorios (429 / 5xx / red), con espera
-# creciente entre intentos.
-NASA_RETRIES = 3
-NASA_BACKOFF_SECONDS = (5, 20, 60)
+# creciente entre intentos; si el servidor manda Retry-After se respeta.
+NASA_RETRIES = 4
+NASA_BACKOFF_SECONDS = (10, 30, 60, 120)
+# NASA publica los datos con unos dias de rezago. Si lo guardado esta a
+# menos de este margen de NASA_END, se considera al dia sin llamar a la
+# API (evita 2,475 peticiones inutiles por corrida).
+NASA_LAG_DAYS = 4
 
 
 # ── Utilidades ───────────────────────────────────────────────────────────────
@@ -96,6 +102,17 @@ def _atomic_write(write_fn, out_path):
             os.remove(tmp_path)
 
 
+def _retry_wait(response, attempt):
+    """Segundos a esperar antes del siguiente intento: lo que pida el
+    servidor en Retry-After si lo manda, o el backoff configurado."""
+    backoff = NASA_BACKOFF_SECONDS[min(attempt, len(NASA_BACKOFF_SECONDS) - 1)]
+    retry_after = response.headers.get('Retry-After') if response else None
+    try:
+        return max(backoff, float(retry_after))
+    except (TypeError, ValueError):
+        return backoff
+
+
 def _get_with_retry(url, timeout):
     last_exc = None
     for attempt in range(NASA_RETRIES + 1):
@@ -110,7 +127,8 @@ def _get_with_retry(url, timeout):
         except (requests.RequestException, ConnectionError) as exc:
             last_exc = exc
             if attempt < NASA_RETRIES:
-                time.sleep(NASA_BACKOFF_SECONDS[attempt])
+                response = getattr(exc, 'response', None)
+                time.sleep(_retry_wait(response, attempt))
     raise last_exc
 
 
@@ -351,12 +369,14 @@ def _download_one(task):
             existing = pickle.load(file)
         last_stored = _last_stored_date(existing)
         if last_stored:
-            next_day = datetime.datetime.strptime(
+            last_stored_day = datetime.datetime.strptime(
                 last_stored, NASA_DATE_FORMAT
-            ) + datetime.timedelta(days=1)
-            start = next_day.strftime(NASA_DATE_FORMAT)
-            if start > NASA_END:
+            )
+            end_day = datetime.datetime.strptime(NASA_END, NASA_DATE_FORMAT)
+            if (end_day - last_stored_day).days <= NASA_LAG_DAYS:
                 return mun_id, 'up-to-date', last_stored
+            next_day = last_stored_day + datetime.timedelta(days=1)
+            start = next_day.strftime(NASA_DATE_FORMAT)
 
     try:
         resp = _get_with_retry(_nasa_url(lon, lat, start, NASA_END), 120)
