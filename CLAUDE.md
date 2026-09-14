@@ -20,7 +20,10 @@ The package root is `seguia/`. All pipeline scripts must be run from that direct
 The full pipeline is documented in `seguia/general_pipeline.py`. Each stage is independently runnable:
 
 ```bash
-# 1. Download & process raw data (drought, meteorological, geospatial)
+# 0. Download raw data (CONAGUA drought index, CONABIO shapefile, NASA POWER meteorology)
+python src/data/downloader.py
+
+# 1. Process raw data (clean drought index, join NASA data, build neighbour graph)
 python src/features/process_data.py
 
 # 2. Engineer all features and targets
@@ -37,7 +40,7 @@ python src/demo/api.py
 # or: uvicorn src.demo.api:app --host 0.0.0.0 --port 8000
 ```
 
-Note: `src/data/downloader.py` is referenced in `general_pipeline.py` but does not yet exist — downloading raw data is a known TODO.
+Every download step is idempotent (skips files that already exist), so `downloader.py` can be re-run to resume interrupted NASA fetches. It disables SSL verification for the CONAGUA/CONABIO hosts.
 
 ## Linting
 
@@ -51,9 +54,11 @@ flake8 src/
 seguia/
 ├── config/config.conf          # YAML — URLs for CONAGUA drought data and CONABIO geo data
 ├── src/
-│   ├── data/utils.py           # Path resolution, serialization helpers, config loader
+│   ├── data/
+│   │   ├── downloader.py       # Stage 0: fetch CONAGUA, CONABIO and NASA POWER raw data
+│   │   └── utils.py            # Path resolution, serialization helpers, config loader
 │   ├── features/
-│   │   ├── process_data.py     # Stage 1: download raw data, build neighbour graph
+│   │   ├── process_data.py     # Stage 1: clean drought data, join NASA, build neighbour graph
 │   │   ├── process_utils.py    # Helpers: NASA join, neighbour graph, drought cleaning
 │   │   ├── drought_utils.py    # CONAGUA drought index mapping (NaN, D0–D4)
 │   │   ├── meteorological_utils.py  # NASA data processing
@@ -99,7 +104,7 @@ seguia/
 - `general_pipeline.py`: Automate periodic data updates (currently manual).
 - `src/demo/app.py`: Add threshold visualization to the prediction map.
 - `src/models/evaluate_model.py`: Evaluation logic not yet implemented.
-- `src/data/downloader.py`: Raw data downloader referenced but missing.
+- `src/data/downloader.py`: NASA date range is hard-coded (`NASA_START`/`NASA_END`); should follow the latest CONAGUA date.
 
 ## Language Note
 
