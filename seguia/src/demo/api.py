@@ -1,126 +1,251 @@
+"""
+API y pagina de la demo de SeGuia.
+
+Al arrancar calcula una sola vez:
+  * el pronostico (probabilidad de sequia D1+ a 6 meses) para cada
+    municipio y cada quincena posterior al ultimo dato etiquetado;
+  * la validacion: para cada quincena del OOT, lo que el modelo predijo y
+    lo que CONAGUA reporto seis meses despues, con AUC por fecha;
+  * la procedencia (fechas de datos, version del modelo, ventana de
+    entrenamiento) leida de download_manifest.json, split_info.json y
+    models/SeGuia.json;
+  * la geometria municipal, estatal y nacional en WGS84 simplificada.
+La pagina solo pide GeoJSON por estado/fecha.
+"""
+
 from contextlib import asynccontextmanager
 import json
 import os
-from typing import Optional
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 from pandas.tseries.offsets import DateOffset
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sklearn.metrics import roc_auc_score
 
-from src.data.utils import get_general_path, join_paths
+from src.data.utils import (
+    check_if_filepath_exists, get_general_path, join_paths
+)
 from src.models.model_utils import (
-    read_features, read_xy_set, get_model, predict
+    HORIZON_MONTHS, PROCESSED_DATA, MODEL_PATH,
+    read_features, read_xy_set, get_model, predict,
 )
 
 INTERIM_DATA = 'data/interim/'
 MUNICIPAL_DATA = 'municipal_data.pkl'
 ALL_FEATURES_FILE = 'all_features.parquet'
-DROP_COLS = ['mun_id', 'standard_date', 'future_date']
-MONTHS = 6
+DOWNLOAD_MANIFEST = 'data/raw/download_manifest.json'
+SPLIT_INFO = 'split_info.json'
+PRODUCTION_INFO = 'SeGuia.json'
+NON_FEATURE_COLS = ['mun_id', 'standard_date']
 MEXICO_EPSG = "EPSG:6362"
 WGS84 = "EPSG:4326"
-MAX_DROUGHT_INDEX = 4.0
+# Tolerancias de simplificacion (grados) para servir geometria ligera.
+MUNICIPAL_SIMPLIFY = 0.008
+STATE_SIMPLIFY = 0.02
+# Categorias de probabilidad mostradas en la UI (limites inferiores).
+CATEGORY_THRESHOLDS = {'baja': 0.0, 'media': 0.35, 'alta': 0.55}
 
 _here = os.path.dirname(os.path.abspath(__file__))
 
 
 class _AppState:
-    """Runtime state populated once at startup."""
-    municipal_wgs84: gpd.GeoDataFrame = None
-    forecast_df: pd.DataFrame = None      # columns: mun_id, future_date (str), prediction
-    val_df: pd.DataFrame = None           # index: mun_id; columns: prediction, real_value
-    states: list = None
-    dates: list = None
-    validation_date: str = None
-    oot_auc: Optional[float] = None
+    """Estado calculado una vez al arrancar."""
+    muni_wgs84: gpd.GeoDataFrame = None  # index mun_id; nombre, entidad, geom
+    states_geojson: dict = None
+    country_geojson: dict = None
+    forecast_df: pd.DataFrame = None  # mun_id, feature/target_date, prediction
+    validation_df: pd.DataFrame = None  # + real_index, real_binary
+    validation_dates: list = None  # [{feature_date, target_date, auc, ...}]
+    stats: dict = None
 
 
 _state = _AppState()
 
 
+def _read_json(path):
+    if not check_if_filepath_exists(path):
+        return None
+    with open(path) as file:
+        return json.load(file)
+
+
+def _date_from_index(index):
+    return pd.to_datetime(
+        pd.Series(index).str.split('__').str[1], format='%Y%m%d'
+    ).values
+
+
+def _fmt(date):
+    return pd.Timestamp(date).strftime('%Y-%m-%d')
+
+
+def _build_provenance(split_info, manifest, production):
+    nasa = (manifest or {}).get('nasa') or {}
+    drought = (manifest or {}).get('drought') or {}
+    metrics = (production or {}).get('metrics') or {}
+    nasa_last = nasa.get('last_date_max')
+    return {
+        'horizon_months': HORIZON_MONTHS,
+        'municipalities': int(len(_state.muni_wgs84)),
+        'data': {
+            'conagua_last_date': drought.get('last_date'),
+            'nasa_last_date': (
+                f'{nasa_last[:4]}-{nasa_last[4:6]}-{nasa_last[6:]}'
+                if nasa_last else None
+            ),
+            'downloaded_at': (manifest or {}).get('run_at'),
+        },
+        'model': {
+            'run_id': (production or {}).get('run_id'),
+            'promoted_at': (production or {}).get('promoted_at'),
+            'training_from': (split_info or {}).get('min_training_date'),
+            'training_to': (split_info or {}).get('max_training_date'),
+            'oot_to': (split_info or {}).get('last_labelled_date'),
+            'rows': (split_info or {}).get('rows'),
+            'metrics': {
+                name: {
+                    k: values.get(k)
+                    for k in ('auc', 'aucpr', 'positive_rate', 'rows')
+                }
+                for name, values in metrics.items()
+            },
+        },
+        'categories': CATEGORY_THRESHOLDS,
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     gp = get_general_path()
-    features = read_features(join_paths(gp, INTERIM_DATA, ALL_FEATURES_FILE))
     muni_info = pd.read_pickle(join_paths(gp, INTERIM_DATA, MUNICIPAL_DATA))
-    x_oot, y_oot = read_xy_set('oot')
     model = get_model()
+    split_info = _read_json(join_paths(gp, PROCESSED_DATA, SPLIT_INFO))
+    manifest = _read_json(join_paths(gp, DOWNLOAD_MANIFEST))
+    production = _read_json(join_paths(gp, MODEL_PATH, PRODUCTION_INFO))
 
-    max_oot_date = pd.to_datetime(x_oot.index.max().split('__')[1], format='%Y%m%d')
-
-    # Forecast: all feature rows beyond the OOT window
-    future_mask = features['standard_date'] > max_oot_date
-    future_features = features[future_mask].copy()
-    future_x = future_features.drop(DROP_COLS, axis=1, errors='ignore')
-    _state.forecast_df = pd.DataFrame({
-        'mun_id': future_features['mun_id'].values,
-        'future_date': (
-            future_features['standard_date'] + DateOffset(months=MONTHS)
-        ).dt.strftime('%Y-%m-%d'),
-        'prediction': predict(model, future_x),
-    })
-
-    # Validation: last OOT date — model prediction vs. what actually happened
-    val_features = features[features['standard_date'] == max_oot_date].copy()
-    val_preds = predict(model, val_features.drop(DROP_COLS, axis=1, errors='ignore'))
-
-    real_date = max_oot_date + DateOffset(months=MONTHS)
-    real_df = (
-        features[features['standard_date'] == real_date][['mun_id', 'num_drought_index']]
-        .copy()
-        .rename(columns={'num_drought_index': 'real_value'})
+    features = read_features(
+        join_paths(gp, INTERIM_DATA, ALL_FEATURES_FILE)
     )
-    real_df['real_value'] = (real_df['real_value'].fillna(0) / MAX_DROUGHT_INDEX).clip(0, 1)
+    feature_cols = [
+        c for c in features.columns if c not in NON_FEATURE_COLS
+    ]
+    index_by_key = pd.Series(np.arange(len(features)), index=features.index)
 
-    val_df = pd.DataFrame({'mun_id': val_features['mun_id'].values, 'prediction': val_preds})
-    val_df = val_df.merge(real_df[['mun_id', 'real_value']], on='mun_id', how='left')
-    _state.val_df = val_df.set_index('mun_id')
+    # ── Pronostico: filas posteriores al ultimo dato etiquetado ─────────────
+    x_oot, y_oot = read_xy_set('oot')
+    last_labelled = pd.Timestamp(
+        split_info['last_labelled_date'] if split_info
+        else _date_from_index(x_oot.index).max()
+    )
+    future_mask = features['standard_date'] > last_labelled
+    future = features.loc[future_mask]
+    _state.forecast_df = pd.DataFrame({
+        'mun_id': future['mun_id'].values,
+        'feature_date': future['standard_date'].values,
+        'target_date': (
+            future['standard_date'] + DateOffset(months=HORIZON_MONTHS)
+        ).values,
+        'prediction': predict(model, future[feature_cols]),
+    })
+    del future
 
-    # OOT AUC
-    oot_preds = predict(model, x_oot)
-    try:
-        from sklearn.metrics import roc_auc_score
-        _state.oot_auc = round(float(roc_auc_score(y_oot, oot_preds)), 4)
-    except Exception:
-        _state.oot_auc = None
+    # ── Validacion: cada quincena del OOT vs. lo observado 6 meses despues ──
+    oot_dates = _date_from_index(x_oot.index)
+    target_dates = (
+        pd.to_datetime(oot_dates) + DateOffset(months=HORIZON_MONTHS)
+    )
+    mun_ids = pd.Series(x_oot.index).str.split('__').str[0].values
+    target_keys = (
+        mun_ids + '__' + pd.Series(target_dates).dt.strftime('%Y%m%d').values
+    )
+    positions = index_by_key.reindex(target_keys)
+    real_index = np.full(len(target_keys), np.nan)
+    found = positions.notna().values
+    real_index[found] = features['num_drought_index'].values[
+        positions[found].astype(int)
+    ]
+    _state.validation_df = pd.DataFrame({
+        'mun_id': mun_ids,
+        'feature_date': oot_dates,
+        'target_date': target_dates.values,
+        'prediction': predict(model, x_oot),
+        'real_index': real_index,
+        'real_binary': y_oot.values,
+    })
+    del features, x_oot, y_oot
 
-    # Municipal geometry converted to WGS84 once at startup
-    muni_gdf = gpd.GeoDataFrame(muni_info)
+    dates = []
+    for feature_date, group in _state.validation_df.groupby('feature_date'):
+        auc = (
+            round(float(roc_auc_score(
+                group['real_binary'], group['prediction']
+            )), 3)
+            if group['real_binary'].nunique() > 1 else None
+        )
+        dates.append({
+            'feature_date': _fmt(feature_date),
+            'target_date': _fmt(group['target_date'].iloc[0]),
+            'auc': auc,
+            'positive_rate': round(float(group['real_binary'].mean()), 4),
+            'n': int(len(group)),
+        })
+    _state.validation_dates = dates
+
+    # ── Geometria: municipios, estados y pais en WGS84 ──────────────────────
+    muni_gdf = gpd.GeoDataFrame(muni_info, geometry='geometry')
     if muni_gdf.crs is None:
         muni_gdf = muni_gdf.set_crs(MEXICO_EPSG)
-    _state.municipal_wgs84 = muni_gdf.to_crs(WGS84)
+    muni_gdf = muni_gdf.to_crs(WGS84)
+    states = muni_gdf[['entidad_federativa', 'geometry']].dissolve(
+        by='entidad_federativa'
+    )
+    country = gpd.GeoDataFrame(
+        geometry=[states.geometry.union_all()], crs=WGS84
+    )
+    states['geometry'] = states.geometry.simplify(STATE_SIMPLIFY)
+    country['geometry'] = country.geometry.simplify(STATE_SIMPLIFY)
+    muni_gdf['geometry'] = muni_gdf.geometry.simplify(MUNICIPAL_SIMPLIFY)
+    _state.muni_wgs84 = muni_gdf[
+        ['nombre_municipio', 'entidad_federativa', 'geometry']
+    ]
+    _state.states_geojson = json.loads(states.reset_index().to_json())
+    _state.country_geojson = json.loads(country.to_json())
 
-    _state.states = sorted(muni_info['entidad_federativa'].unique().tolist())
-    _state.dates = sorted(_state.forecast_df['future_date'].unique().tolist())
-    _state.validation_date = max_oot_date.strftime('%Y-%m-%d')
-
+    _state.stats = _build_provenance(split_info, manifest, production)
+    _state.stats['oot_auc_by_date'] = dates
+    _state.stats['forecast_dates'] = sorted(
+        _fmt(d) for d in _state.forecast_df['target_date'].unique()
+    )
+    _state.stats['states'] = sorted(
+        muni_info['entidad_federativa'].unique().tolist()
+    )
     yield
 
 
-app = FastAPI(title="SeGuía API", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="SeGuía API", version="3.0.0", lifespan=lifespan)
 templates = Jinja2Templates(directory=os.path.join(_here, "templates"))
-app.mount("/static", StaticFiles(directory=os.path.join(_here, "static")), name="static")
+app.mount(
+    "/static", StaticFiles(directory=os.path.join(_here, "static")),
+    name="static",
+)
 
 _refs = join_paths(get_general_path(), "references")
 if os.path.isdir(_refs):
     app.mount("/references", StaticFiles(directory=_refs), name="references")
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+# ── Rutas ────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "states": _state.states,
-        "dates": _state.dates,
-        "validation_date": _state.validation_date,
-        "oot_auc": _state.oot_auc,
-    })
+    return templates.TemplateResponse(
+        request, "index.html", {"stats": _state.stats}
+    )
 
 
 @app.get("/api/health")
@@ -130,42 +255,71 @@ def health():
 
 @app.get("/api/stats")
 def stats():
-    return {
-        "oot_auc": _state.oot_auc,
-        "validation_date": _state.validation_date,
-        "municipalities": len(_state.municipal_wgs84) if _state.municipal_wgs84 is not None else None,
-        "forecast_horizon_months": MONTHS,
-    }
+    return _state.stats
+
+
+@app.get("/api/geo/states")
+def geo_states():
+    return JSONResponse(content=_state.states_geojson)
+
+
+@app.get("/api/geo/country")
+def geo_country():
+    return JSONResponse(content=_state.country_geojson)
+
+
+def _to_geojson(df, value_cols):
+    merged = df.join(_state.muni_wgs84, how='inner')
+    gdf = gpd.GeoDataFrame(
+        merged[
+            ['nombre_municipio', 'entidad_federativa', *value_cols, 'geometry']
+        ],
+        crs=WGS84,
+    )
+    return json.loads(gdf.to_json())
 
 
 @app.get("/api/forecast/map")
 def forecast_map(
     entity: str = Query(..., description="Estado (entidad federativa)"),
-    date: str = Query(..., description="Fecha predicha (YYYY-MM-DD)"),
+    date: str = Query(..., description="Fecha objetivo (YYYY-MM-DD)"),
 ):
     df = _state.forecast_df
-    filtered = df[df['future_date'] == date].set_index('mun_id')
-    merged = filtered.join(_state.municipal_wgs84, how='inner')
-    gdf = gpd.GeoDataFrame(merged[merged['entidad_federativa'] == entity])
-
-    if gdf.empty:
-        raise HTTPException(404, f"Sin datos para {entity!r} en {date!r}.")
-
-    geojson = json.loads(gdf[['nombre_municipio', 'prediction', 'geometry']].to_json())
+    rows = df[df['target_date'] == pd.Timestamp(date)].set_index('mun_id')
+    rows = rows.join(_state.muni_wgs84[['entidad_federativa']], how='inner')
+    rows = rows[rows['entidad_federativa'] == entity]
+    rows = rows.drop(columns='entidad_federativa')
+    if rows.empty:
+        raise HTTPException(
+            404, f"Sin pronostico para {entity!r} en {date!r}."
+        )
+    geojson = _to_geojson(rows[['prediction']], ['prediction'])
+    geojson['meta'] = {
+        'entity': entity,
+        'target_date': date,
+        'feature_date': _fmt(rows['feature_date'].iloc[0]),
+        'n': int(len(rows)),
+        'mean': round(float(rows['prediction'].mean()), 4),
+    }
     return JSONResponse(content=geojson)
 
 
 @app.get("/api/validation/map")
 def validation_map(
-    layer: str = Query(..., pattern=r"^(prediction|real_value)$"),
-    simplify: float = Query(default=0.01, ge=0, le=1, description="Tolerancia de simplificación geométrica en grados"),
+    date: str = Query(..., description="Quincena del OOT (YYYY-MM-DD)"),
 ):
-    merged = _state.val_df.join(_state.municipal_wgs84, how='inner')
-    gdf = gpd.GeoDataFrame(merged)[['nombre_municipio', layer, 'geometry']].copy()
-    gdf = gdf.rename(columns={layer: 'value'})
-    if simplify > 0:
-        gdf.geometry = gdf.geometry.simplify(simplify)
-    return JSONResponse(content=json.loads(gdf.to_json()))
+    df = _state.validation_df
+    rows = df[df['feature_date'] == pd.Timestamp(date)].set_index('mun_id')
+    if rows.empty:
+        raise HTTPException(404, f"Sin validacion para {date!r}.")
+    geojson = _to_geojson(
+        rows[['prediction', 'real_index']], ['prediction', 'real_index']
+    )
+    info = next(
+        d for d in _state.validation_dates if d['feature_date'] == date
+    )
+    geojson['meta'] = info
+    return JSONResponse(content=geojson)
 
 
 if __name__ == "__main__":

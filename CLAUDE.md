@@ -75,7 +75,7 @@ seguia/
 │   │   ├── model_utils.py      # Load splits, load model, generate predictions
 │   │   ├── evaluate_model.py   # Metrics on train/dev/test/oot, metrics report, promotion rule
 │   │   └── create_model.py     # Stage 3 orchestrator
-│   └── demo/app.py             # Dash web app — interactive choropleth map, date slider
+│   └── demo/                   # api.py (FastAPI, current) + templates/static; app.py is the legacy Dash app
 ├── notebooks/                  # 12 numbered development notebooks (exploration → src/)
 ├── models/                     # SeGuia.pkl = promoted model; SeGuia.json = which run is promoted;
 │                               # SeGuia_<YYYYMMDD>.pkl = every trained candidate (generated, not in git)
@@ -114,6 +114,10 @@ Download (first `--refresh`, all NASA data) ~21 min; stage 1 ~17 min; stage 2 ~8
 ### Model performance (run 20260914, first with 2026 data)
 
 Train/dev/test AUC ≈ 0.95/0.95/0.94 but **OOT AUC 0.634** (AUC-PR 0.21, 4 % positives). Per feature date, OOT AUC is 0.91–0.97 for Sep–Dec 2025 (targets Mar–Jun 2026, drought persisting/receding) and ~0.45 for Jan–Feb 2026 (targets Jul–Aug 2026, *new* drought onset after a historic minimum). The model behaves largely as a persistence model; the random train/test split leaks neighbouring fortnights of the same municipality, so test AUC overstates forward-looking skill. Treat OOT (ideally per-date) as the real metric.
+
+### Demo (`src/demo/api.py`)
+
+At startup it loads the promoted model, `all_features.parquet` (via `read_features`), the OOT split, `split_info.json`, `download_manifest.json` and `models/SeGuia.json`, and precomputes: the forecast for every row after the last labelled date, per-date OOT validation (prediction vs. observed index six months later, AUC per fortnight), and WGS84 geometry (municipal simplified 0.008°, states dissolved, country outline). Endpoints: `/api/stats` (provenance + per-date AUC + dates/states), `/api/geo/country|states`, `/api/forecast/map?entity&date`, `/api/validation/map?date`. The page draws Mexico only (no basemap tiles; country silhouette on sand, `maxBounds` locked), styled from the brand: ink `#0B2A38`, sand `#E4C9A8`, ochre `#C8912E`, Chonburi display + Quattrocento Sans body. Every figure on the page comes from those JSON files — nothing is hard-coded. The target shown is "D1 or worse": `drought_utils` maps D0 to 0, the same as no drought. Starlette ≥ 1.0 requires `TemplateResponse(request, name, context)`.
 
 ### Known TODOs (from code comments)
 

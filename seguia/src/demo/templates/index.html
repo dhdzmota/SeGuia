@@ -3,300 +3,258 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SeGuía — Predicción de Sequías en México</title>
-
-  <!-- Tailwind CSS (CDN) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Leaflet.js -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
+  <title>SeGuía — Sequía en México, seis meses antes</title>
+  <link rel="icon" href="/references/branding/Logo seguia.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chonburi&family=Quattrocento+Sans:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
   <link rel="stylesheet" href="/static/style.css" />
-
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            navy: { DEFAULT: '#0f3460', dark: '#0a2040' },
-            gold: '#f7b731',
-          },
-          fontFamily: {
-            sans: ['Inter', 'system-ui', 'sans-serif'],
-          },
-        },
-      },
-    };
-  </script>
 </head>
+<body>
+  <script id="stats-data" type="application/json">{{ stats | tojson }}</script>
 
-<body class="bg-slate-50 text-gray-900 font-sans antialiased">
-
-  <!-- ═══════════════════════════════════════════ HEADER ═════════════════════ -->
-  <header class="bg-[#0f3460] text-white shadow-lg sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <img src="/references/branding/Logo seguia.png"
-             alt="SeGuía"
-             class="h-9 rounded"
-             onerror="this.style.display='none'" />
-        <div>
-          <p class="text-lg font-bold tracking-tight leading-none">SeGuía</p>
-          <p class="text-xs text-blue-300 leading-none mt-0.5">Sistema de Predicción de Sequías</p>
-        </div>
-      </div>
-      <nav class="hidden md:flex gap-8 text-sm font-medium text-blue-200">
-        <a href="#prediccion" class="hover:text-white transition-colors duration-150">Predicción</a>
-        <a href="#validacion" class="hover:text-white transition-colors duration-150">Validación</a>
-        <a href="#metodologia" class="hover:text-white transition-colors duration-150">Metodología</a>
-      </nav>
-    </div>
+  <header class="site-header">
+    <a class="brand" href="#top">
+      <img src="/static/compass.png" alt="" class="brand-mark" />
+      <span class="brand-name">Se<b>Guía</b></span>
+    </a>
+    <nav class="site-nav" aria-label="Secciones">
+      <a href="#pronostico">Pronóstico</a>
+      <a href="#confianza">Cuánto confiar</a>
+      <a href="#metodo">Cómo funciona</a>
+      <a href="#datos">Datos y versión</a>
+    </nav>
   </header>
 
-  <!-- ═══════════════════════════════════════════ HERO ══════════════════════ -->
-  <section class="bg-gradient-to-br from-[#0f3460] via-[#16213e] to-[#0d1b2a] text-white py-20">
-    <div class="max-w-7xl mx-auto px-6">
-      <div class="max-w-2xl">
-        <span class="inline-block text-xs font-semibold tracking-widest text-blue-300 uppercase mb-4">
-          Inteligencia Artificial · Ciencias del Clima
-        </span>
-        <h1 class="text-5xl font-extrabold leading-tight mb-5">
-          Anticipa sequías con
-          <span class="hero-highlight"> 6 meses</span>
-          de anticipación
-        </h1>
-        <p class="text-blue-200 text-lg leading-relaxed mb-8">
-          SeGuía predice la probabilidad de sequía en cada municipio de México
-          combinando el historial del Monitor de Sequía, datos climáticos de la NASA
-          y la vecindad geográfica entre municipios.
-        </p>
-        <a href="#prediccion"
-           class="inline-block bg-[#f7b731] text-gray-900 font-semibold text-sm
-                  px-6 py-3 rounded-lg hover:bg-yellow-400 transition-colors duration-150
-                  shadow-lg shadow-yellow-900/30">
-          Ver mapa de predicción &rarr;
-        </a>
-      </div>
-
-      <!-- Stats -->
-      <div class="mt-16 grid grid-cols-3 gap-0 divide-x divide-blue-800/60 max-w-lg
-                  border border-blue-800/60 rounded-2xl bg-white/5 backdrop-blur-sm p-6">
-        <div class="text-center px-4">
-          <p class="text-4xl font-bold text-[#f7b731]">~85%</p>
-          <p class="text-blue-300 text-sm mt-1">Precisión del modelo</p>
+  <main id="top">
+    <!-- ══ Portada ═══════════════════════════════════════════════════════ -->
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <p class="eyebrow">Alerta temprana de sequía · México</p>
+          <h1>Sequía en México,<br />seis meses antes.</h1>
+          <p class="lede">
+            SeGuía estima, para cada uno de los {{ "{:,}".format(stats.municipalities) }} municipios del país,
+            la probabilidad de que el Monitor de Sequía de México reporte
+            <strong>sequía moderada o peor (D1–D4)</strong> dentro de seis meses.
+            Aprende del historial del propio Monitor, de la meteorología diaria de la NASA
+            y de lo que ocurre en los municipios vecinos.
+          </p>
+          <a class="button" href="#pronostico">Ver el pronóstico</a>
         </div>
-        <div class="text-center px-4">
-          <p class="text-4xl font-bold text-[#f7b731]">2,457</p>
-          <p class="text-blue-300 text-sm mt-1">Municipios cubiertos</p>
-        </div>
-        <div class="text-center px-4">
-          <p class="text-4xl font-bold text-[#f7b731]">6</p>
-          <p class="text-blue-300 text-sm mt-1">Meses de anticipación</p>
-        </div>
+        <dl class="provenance" aria-label="Procedencia de los datos">
+          <div><dt>Monitor de Sequía (CONAGUA)</dt><dd>datos al <span data-date="{{ stats.data.conagua_last_date }}"></span></dd></div>
+          <div><dt>Meteorología (NASA POWER)</dt><dd>datos al <span data-date="{{ stats.data.nasa_last_date }}"></span></dd></div>
+          <div><dt>Modelo en producción</dt><dd>versión {{ stats.model.run_id }} · entrenado con datos de <span data-date="{{ stats.model.training_from }}" data-short></span> a <span data-date="{{ stats.model.training_to }}" data-short></span></dd></div>
+        </dl>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ═══════════════════════════════════════════ FORECAST MAP ══════════════ -->
-  <section id="prediccion" class="py-14">
-    <div class="max-w-7xl mx-auto px-6">
+    <!-- ══ Pronóstico ════════════════════════════════════════════════════ -->
+    <section id="pronostico" class="section">
+      <div class="wrap">
+        <header class="section-head">
+          <h2>Pronóstico por municipio</h2>
+          <p>Elige un estado y una quincena. Cada municipio se colorea según la probabilidad
+            de que el Monitor lo clasifique con sequía moderada o peor en esa fecha.</p>
+        </header>
 
-      <div class="mb-6">
-        <h2 class="text-2xl font-bold text-gray-800">Mapa de Predicción</h2>
-        <p class="text-gray-500 mt-1 text-sm">
-          Probabilidad de sequía por municipio para la fecha seleccionada.
-        </p>
-      </div>
-
-      <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
-
-        <!-- Controls -->
-        <div class="flex flex-wrap gap-4 mb-6">
-          <div class="flex-1 min-w-[220px]">
-            <label for="state-select" class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-              Estado
-            </label>
-            <select id="state-select"
-                    class="w-full bg-slate-50 border border-gray-200 rounded-lg px-4 py-2.5
-                           text-gray-800 text-sm focus:border-blue-400 focus:ring-2
-                           focus:ring-blue-100 transition">
-              {% for s in states %}
+        <div class="controls" role="group" aria-label="Filtros del pronóstico">
+          <label class="field">
+            <span>Estado</span>
+            <select id="state-select">
+              {% for s in stats.states %}
               <option value="{{ s }}"{% if s == "Jalisco" %} selected{% endif %}>{{ s }}</option>
               {% endfor %}
             </select>
+          </label>
+          <div class="field field-range">
+            <span>Quincena pronosticada</span>
+            <div class="range-row">
+              <button type="button" id="date-prev" class="icon-button" aria-label="Quincena anterior">‹</button>
+              <input type="range" id="date-range" min="0" max="{{ stats.forecast_dates | length - 1 }}" value="0" step="1"
+                     aria-valuetext="" list="date-ticks" />
+              <button type="button" id="date-next" class="icon-button" aria-label="Quincena siguiente">›</button>
+            </div>
+            <output id="date-label" for="date-range" class="range-label"></output>
           </div>
+        </div>
 
-          <div class="flex-1 min-w-[220px]">
-            <label for="date-select" class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-              Fecha de predicción
-            </label>
-            <select id="date-select"
-                    class="w-full bg-slate-50 border border-gray-200 rounded-lg px-4 py-2.5
-                           text-gray-800 text-sm focus:border-blue-400 focus:ring-2
-                           focus:ring-blue-100 transition">
-              {% for d in dates %}
-              <option value="{{ d }}">{{ d }}</option>
+        <div class="forecast-grid">
+          <div class="map-frame">
+            <div id="forecast-map" class="map" role="img" aria-label="Mapa de pronóstico por municipio"></div>
+            <div class="map-status" id="forecast-status" hidden></div>
+            <div class="compass" aria-hidden="true">
+              <svg viewBox="0 0 40 40" width="34" height="34"><path d="M20 2 L24 20 L20 38 L16 20 Z" fill="#0B2A38"/><path d="M2 20 L20 16 L38 20 L20 24 Z" fill="#0B2A38" opacity=".55"/><circle cx="20" cy="20" r="3" fill="#E4C9A8"/></svg>
+              <span>N</span>
+            </div>
+          </div>
+          <aside class="panel" aria-live="polite">
+            <p class="panel-title" id="panel-state">—</p>
+            <p class="panel-sub" id="panel-date"></p>
+            <ul class="tally" id="tally">
+              <li><i class="swatch swatch-alta"></i><b id="tally-alta">–</b><span>alta</span></li>
+              <li><i class="swatch swatch-media"></i><b id="tally-media">–</b><span>media</span></li>
+              <li><i class="swatch swatch-baja"></i><b id="tally-baja">–</b><span>baja</span></li>
+            </ul>
+            <div class="hover-card" id="hover-card">
+              <p class="hover-hint">Pasa el cursor sobre un municipio.</p>
+            </div>
+          </aside>
+        </div>
+
+        <div class="legend">
+          <div class="ramp" aria-hidden="true"></div>
+          <div class="legend-ticks">
+            <span>baja <small>&lt; {{ (stats.categories.media * 100) | int }} %</small></span>
+            <span>media <small>{{ (stats.categories.media * 100) | int }}–{{ (stats.categories.alta * 100) | int }} %</small></span>
+            <span>alta <small>≥ {{ (stats.categories.alta * 100) | int }} %</small></span>
+          </div>
+          <p class="legend-note">
+            La probabilidad se lee mejor <em>comparando municipios y quincenas entre sí</em> que como una frecuencia exacta:
+            el modelo está entrenado para no pasar por alto sequías, por lo que tiende a sobreestimar en años húmedos.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ Cuánto confiar ════════════════════════════════════════════════ -->
+    <section id="confianza" class="section section-ink">
+      <div class="wrap">
+        <header class="section-head">
+          <h2>¿Cuánto confiar en el pronóstico?</h2>
+          <p>Cada mes reentrenamos el modelo y lo evaluamos sobre las últimas quincenas cuya
+            respuesta ya se conoce pero que <em>no</em> se usaron para entrenar. Comparamos lo que
+            SeGuía dijo con lo que CONAGUA reportó seis meses después.</p>
+        </header>
+
+        <div class="trust-grid">
+          <figure class="chart-card">
+            <figcaption>
+              <span class="chart-title">Capacidad de distinguir municipios con y sin sequía, por quincena</span>
+              <span class="chart-sub">AUC · 1.0 = perfecto · 0.5 = azar · fuera de entrenamiento, <span data-date="{{ stats.oot_auc_by_date[0].feature_date }}" data-short></span> a <span data-date="{{ stats.oot_auc_by_date[-1].feature_date }}" data-short></span></span>
+            </figcaption>
+            <div id="auc-chart" class="chart" role="img" aria-label="AUC por quincena"></div>
+            <div class="chart-tooltip" id="auc-tooltip" hidden></div>
+          </figure>
+          <div class="trust-copy">
+            <p class="big-number"><b>{{ "%.2f" | format(stats.model.metrics.oot.auc) }}</b><span>AUC en las {{ stats.oot_auc_by_date | length }} quincenas juntas</span></p>
+            <p>El AUC responde una pregunta concreta: si tomas al azar un municipio que sí tuvo sequía y otro que no,
+              ¿con qué frecuencia el modelo le dio mayor probabilidad al primero? 1.0 es siempre; 0.5 es lanzar una moneda.</p>
+            <p><strong>Dónde acierta.</strong> Cuando ya hay sequía, SeGuía anticipa bien si persistirá o se disipará
+              (AUC de 0.91 a 0.97 en las quincenas de septiembre a diciembre de 2025).</p>
+            <p><strong>Dónde falla.</strong> Le cuesta anticipar sequías que <em>empiezan</em> desde cero. En 2026 el país venía
+              del nivel de sequía más bajo desde 2016 y las quincenas cuyo objetivo era julio y agosto de 2026 quedaron
+              cerca del azar. Esa es la limitación que estamos trabajando.</p>
+          </div>
+        </div>
+
+        <div class="controls controls-dark">
+          <label class="field">
+            <span>Quincena evaluada</span>
+            <select id="validation-select">
+              {% for d in stats.oot_auc_by_date %}
+              <option value="{{ d.feature_date }}" data-target="{{ d.target_date }}" data-auc="{{ d.auc }}" data-pos="{{ d.positive_rate }}">
+                pronóstico del {{ d.feature_date }} → observado el {{ d.target_date }}{% if d.auc %} · AUC {{ "%.2f" | format(d.auc) }}{% endif %}
+              </option>
               {% endfor %}
             </select>
-          </div>
+          </label>
+          <p class="validation-summary" id="validation-summary"></p>
         </div>
 
-        <!-- Map wrapper (relative so spinner can overlay) -->
-        <div class="relative rounded-xl overflow-hidden border border-gray-100">
-          <div id="forecast-map" style="height: 520px;"></div>
-
-          <!-- Loading spinner -->
-          <div id="forecast-spinner"
-               class="hidden absolute inset-0 flex items-center justify-center bg-white/70 z-10">
-            <div class="spinner"></div>
-          </div>
-
-          <!-- Error state -->
-          <div id="forecast-error"
-               class="hidden absolute inset-0 flex items-center justify-center bg-white/90 z-10">
-            <p class="text-gray-500 text-sm">No se pudieron cargar los datos. Intenta con otra selección.</p>
-          </div>
-        </div>
-
-        <!-- Legend -->
-        <div class="mt-4 flex items-center gap-3">
-          <span class="text-xs text-gray-400 whitespace-nowrap">Sin sequía (0%)</span>
-          <div class="legend-bar flex-1"></div>
-          <span class="text-xs text-gray-400 whitespace-nowrap">Sequía extrema (100%)</span>
-        </div>
-      </div><!-- /card -->
-    </div>
-  </section>
-
-  <!-- ═══════════════════════════════════════════ VALIDATION ════════════════ -->
-  <section id="validacion" class="py-14 bg-slate-100">
-    <div class="max-w-7xl mx-auto px-6">
-
-      <div class="mb-6">
-        <h2 class="text-2xl font-bold text-gray-800">¿Por qué confiar en SeGuía?</h2>
-        <p class="text-gray-500 mt-1 text-sm">
-          Comparación entre la predicción y la sequía real observada para
-          <span class="font-semibold text-gray-700">{{ validation_date }}</span>.
-        </p>
-      </div>
-
-      <!-- AUC badge (shown only when computed) -->
-      {% if oot_auc %}
-      <div class="flex items-center gap-4 mb-6 bg-white rounded-xl shadow-sm
-                  border border-gray-100 px-6 py-4 max-w-sm">
-        <div class="text-4xl font-extrabold text-[#0f3460]">{{ "%.3f"|format(oot_auc) }}</div>
-        <div>
-          <p class="text-sm font-semibold text-gray-700">AUC — conjunto de prueba</p>
-          <p class="text-xs text-gray-400">Período fuera de entrenamiento (OOT)</p>
+        <p class="compare-note">A la izquierda, el <em>orden</em> de riesgo que dio el modelo (lo que mide el AUC), por percentil dentro de esa quincena. A la derecha, la categoría que reportó el Monitor seis meses después.</p>
+        <p class="compare-catch" id="validation-catch"></p>
+        <div class="compare-grid">
+          <figure class="map-card">
+            <figcaption>Dónde vio más riesgo SeGuía el <span id="val-feature-date"></span></figcaption>
+            <div id="validation-pred-map" class="map map-national" role="img" aria-label="Mapa de riesgo relativo pronosticado"></div>
+            <div class="mini-legend"><div class="ramp ramp-deciles"></div><span>percentil &lt; 50</span><span>50–80 · 80–90 · 90–95</span><span>≥ 95</span></div>
+          </figure>
+          <figure class="map-card">
+            <figcaption>Lo que CONAGUA observó el <span id="val-target-date"></span></figcaption>
+            <div id="validation-real-map" class="map map-national" role="img" aria-label="Mapa de sequía observada"></div>
+            <ul class="msm-legend" aria-label="Categorías del Monitor de Sequía">
+              <li><i style="background:#F3E9DA"></i>Sin sequía o D0</li>
+              <li><i style="background:#FCD37F"></i>D1 moderada</li>
+              <li><i style="background:#FFAA00"></i>D2 severa</li>
+              <li><i style="background:#E60000"></i>D3 extrema</li>
+              <li><i style="background:#730000"></i>D4 excepcional</li>
+            </ul>
+          </figure>
         </div>
       </div>
-      {% endif %}
+    </section>
 
-      <!-- Side-by-side maps -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-        <!-- Prediction map -->
-        <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-          <div class="flex items-center gap-2 mb-4">
-            <span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>
-            <h3 class="font-semibold text-gray-700 text-sm">Predicción del Modelo</h3>
-          </div>
-          <div class="relative rounded-xl overflow-hidden border border-gray-100">
-            <div id="val-pred-map" style="height: 420px;"></div>
-            <div id="val-pred-map-spinner"
-                 class="hidden absolute inset-0 flex items-center justify-center bg-white/70 z-10">
-              <div class="spinner"></div>
-            </div>
-          </div>
-          <div class="mt-3 flex items-center gap-2">
-            <span class="text-xs text-gray-400">0%</span>
-            <div class="legend-bar flex-1"></div>
-            <span class="text-xs text-gray-400">100%</span>
-          </div>
+    <!-- ══ Cómo funciona ═════════════════════════════════════════════════ -->
+    <section id="metodo" class="section">
+      <div class="wrap">
+        <header class="section-head">
+          <h2>Cómo funciona</h2>
+        </header>
+        <div class="method-grid">
+          <article>
+            <h3>Qué aprende</h3>
+            <p>Para cada municipio y quincena desde 2017, el modelo ve el historial reciente del índice de sequía
+              (últimos 100 y 190 días), las condiciones meteorológicas de los últimos 90 días —temperatura, humedad,
+              precipitación, presión— y el promedio de todo eso en sus municipios vecinos de primer y segundo grado.
+              La respuesta que aprende a predecir es si seis meses después el Monitor reportó D1 o peor.</p>
+          </article>
+          <article>
+            <h3>Qué modelo es</h3>
+            <p>Un clasificador de árboles con gradiente (XGBoost) de 10,000 árboles poco profundos y aprendizaje lento,
+              con regularización fuerte y peso extra a los casos de sequía para no pasarlos por alto. Produce una
+              probabilidad por municipio y quincena; no un sí o no.</p>
+          </article>
+          <article>
+            <h3>Cómo se evalúa y actualiza</h3>
+            <p>Se entrena solo con quincenas anteriores a un corte y se evalúa en los seis meses posteriores cuya
+              respuesta ya se conoce. Cada mes se descargan los datos nuevos, se recalculan las características, se
+              entrena un candidato y se compara con el modelo en producción sobre ese mismo periodo: solo lo
+              reemplaza si no lo empeora.</p>
+          </article>
         </div>
-
-        <!-- Real value map -->
-        <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-          <div class="flex items-center gap-2 mb-4">
-            <span class="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span>
-            <h3 class="font-semibold text-gray-700 text-sm">Sequía Real Observada</h3>
-          </div>
-          <div class="relative rounded-xl overflow-hidden border border-gray-100">
-            <div id="val-real-map" style="height: 420px;"></div>
-            <div id="val-real-map-spinner"
-                 class="hidden absolute inset-0 flex items-center justify-center bg-white/70 z-10">
-              <div class="spinner"></div>
-            </div>
-          </div>
-          <div class="mt-3 flex items-center gap-2">
-            <span class="text-xs text-gray-400">Sin sequía</span>
-            <div class="legend-bar flex-1"></div>
-            <span class="text-xs text-gray-400">D4 Excepcional</span>
-          </div>
+        <div class="limits">
+          <h3>Límites que conviene tener presentes</h3>
+          <ul>
+            <li>El objetivo es D1 o peor: la categoría D0 («anormalmente seco») cuenta como sin sequía.</li>
+            <li>El modelo anticipa mucho mejor la evolución de una sequía existente que el inicio de una nueva.</li>
+            <li>Las probabilidades están sesgadas al alza a propósito (peso extra a la sequía); úsalas para ordenar y priorizar, no como frecuencias exactas.</li>
+            <li>La meteorología de la NASA llega con unos días de rezago y los últimos días del pronóstico se apoyan en menos información.</li>
+          </ul>
         </div>
-
-      </div><!-- /grid -->
-    </div>
-  </section>
-
-  <!-- ═══════════════════════════════════════════ METHODOLOGY ═══════════════ -->
-  <section id="metodologia" class="py-14">
-    <div class="max-w-7xl mx-auto px-6">
-
-      <h2 class="text-2xl font-bold text-gray-800 mb-8">Metodología</h2>
-
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-        <div class="method-card bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <div class="text-4xl mb-4">📡</div>
-          <h3 class="font-semibold text-gray-800 mb-2">Fuentes de datos</h3>
-          <p class="text-gray-500 text-sm leading-relaxed">
-            Monitor de Sequía de México (CONAGUA) con cadencia quincenal,
-            variables climáticas de la NASA y límites municipales de CONABIO (2018).
-          </p>
-        </div>
-
-        <div class="method-card bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <div class="text-4xl mb-4">🤖</div>
-          <h3 class="font-semibold text-gray-800 mb-2">Modelo XGBoost</h3>
-          <p class="text-gray-500 text-sm leading-relaxed">
-            Clasificador con 10,000 estimadores entrenado sobre ventanas temporales
-            de sequía, características meteorológicas con rezago de 3 meses y
-            agregaciones de municipios vecinos de primer y segundo grado.
-          </p>
-        </div>
-
-        <div class="method-card bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <div class="text-4xl mb-4">🗺️</div>
-          <h3 class="font-semibold text-gray-800 mb-2">Cobertura nacional</h3>
-          <p class="text-gray-500 text-sm leading-relaxed">
-            Los 2,457 municipios de los 32 estados de México, utilizando datos
-            desde 2017 y validado en un período fuera del tiempo de entrenamiento
-            (OOT) a partir de junio de 2023.
-          </p>
-        </div>
-
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ═══════════════════════════════════════════ FOOTER ════════════════════ -->
-  <footer class="bg-[#0f3460] text-white py-10 mt-4">
-    <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
-      <div>
-        <p class="font-bold text-lg">SeGuía</p>
-        <p class="text-blue-300 text-sm mt-1">
-          Predicción de Sequías en México · Datos: CONAGUA · NASA · CONABIO
-        </p>
+    <!-- ══ Datos y versión ═══════════════════════════════════════════════ -->
+    <section id="datos" class="section section-sand">
+      <div class="wrap">
+        <header class="section-head">
+          <h2>Datos y versión</h2>
+        </header>
+        <dl class="facts">
+          <div><dt>Índice de sequía</dt><dd>Monitor de Sequía de México, CONAGUA · quincenal · último dato <span data-date="{{ stats.data.conagua_last_date }}"></span></dd></div>
+          <div><dt>Meteorología</dt><dd>NASA POWER · 19 variables diarias por municipio · último dato <span data-date="{{ stats.data.nasa_last_date }}"></span></dd></div>
+          <div><dt>Límites municipales</dt><dd>CONABIO · {{ "{:,}".format(stats.municipalities) }} municipios en 32 estados</dd></div>
+          <div><dt>Modelo</dt><dd>versión {{ stats.model.run_id }} · promovido el <span data-date="{{ stats.model.promoted_at }}"></span></dd></div>
+          <div><dt>Entrenamiento</dt><dd><span data-date="{{ stats.model.training_from }}"></span> → <span data-date="{{ stats.model.training_to }}"></span> · {{ "{:,}".format(stats.model.rows.train) }} municipio-quincenas</dd></div>
+          <div><dt>Evaluación fuera de entrenamiento</dt><dd>hasta <span data-date="{{ stats.model.oot_to }}"></span> · {{ "{:,}".format(stats.model.rows.oot) }} municipio-quincenas · AUC {{ "%.3f" | format(stats.model.metrics.oot.auc) }} · AUC-PR {{ "%.3f" | format(stats.model.metrics.oot.aucpr) }}</dd></div>
+          <div><dt>Última descarga</dt><dd><span data-date="{{ stats.data.downloaded_at }}"></span></dd></div>
+        </dl>
       </div>
-      <img src="/references/repo_info/seguiaqr_code.png"
-           alt="Código QR del repositorio"
-           class="h-20 rounded-lg"
-           onerror="this.style.display='none'" />
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>SeGuía · Predicción de sequías en México</span>
+      <span>Fuentes: CONAGUA · NASA POWER · CONABIO</span>
+      <a href="https://github.com/dhdzmota/SeGuia" rel="noopener">Código en GitHub</a>
     </div>
   </footer>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
