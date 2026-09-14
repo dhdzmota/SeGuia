@@ -21,7 +21,8 @@ The full pipeline is documented in `seguia/general_pipeline.py`. Each stage is i
 
 ```bash
 # 0. Download raw data (CONAGUA drought index, CONABIO shapefile, NASA POWER meteorology)
-python src/data/downloader.py
+python src/data/downloader.py            # resume: skips files that already exist
+python src/data/downloader.py --refresh  # monthly run: re-download CONAGUA, fetch NASA incrementally
 
 # 1. Process raw data (clean drought index, join NASA data, build neighbour graph)
 python src/features/process_data.py
@@ -40,7 +41,7 @@ python src/demo/api.py
 # or: uvicorn src.demo.api:app --host 0.0.0.0 --port 8000
 ```
 
-Every download step is idempotent (skips files that already exist), so `downloader.py` can be re-run to resume interrupted NASA fetches. It disables SSL verification for the CONAGUA/CONABIO hosts.
+`downloader.py` has two modes. Without flags it resumes (skips anything already on disk). With `--refresh` it re-downloads the CONAGUA Excel (validated: required columns present, no fewer dates than the current file, written atomically) and asks NASA POWER only for days after each municipality's last stored date, merging them into the existing pickle. Trailing days NASA has not processed yet come back as `-999` and are trimmed so the next run re-requests them; interior `-999` values become NaN. Each run writes `data/raw/download_manifest.json` (what was updated, last dates, errors). It disables SSL verification for the CONAGUA/CONABIO hosts.
 
 ## Linting
 
@@ -104,7 +105,7 @@ seguia/
 - `general_pipeline.py`: Automate periodic data updates (currently manual).
 - `src/demo/app.py`: Add threshold visualization to the prediction map.
 - `src/models/evaluate_model.py`: Evaluation logic not yet implemented.
-- `src/data/downloader.py`: downloads skip existing files, so a monthly rerun does not refresh CONAGUA/NASA data yet (needs a refresh mode + incremental NASA fetch).
+- `src/features/`: interim caches (`meteorological_information/`, `meteorological_features/`) are not invalidated when raw NASA data changes after `downloader.py --refresh`.
 
 ## Language Note
 
