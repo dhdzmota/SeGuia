@@ -25,10 +25,10 @@ python src/data/downloader.py            # resume: skips files that already exis
 python src/data/downloader.py --refresh  # monthly run: re-download CONAGUA, fetch NASA incrementally
 
 # 1. Process raw data (clean drought index, join NASA data, build neighbour graph)
-python src/features/process_data.py
+python src/features/process_data.py                 # add --force to rebuild every partition
 
 # 2. Engineer all features and targets
-python src/features/create_target_and_features.py
+python src/features/create_target_and_features.py   # add --force to recompute all meteorological features
 
 # 3. Split data and train XGBoost model
 python src/models/create_model.py
@@ -42,6 +42,8 @@ python src/demo/api.py
 ```
 
 `downloader.py` has two modes. Without flags it resumes (skips anything already on disk). With `--refresh` it re-downloads the CONAGUA Excel (validated: required columns present, no fewer dates than the current file, written atomically) and asks NASA POWER only for days after each municipality's last stored date, merging them into the existing pickle. Trailing days NASA has not processed yet come back as `-999` and are trimmed so the next run re-requests them; interior `-999` values become NaN. Each run writes `data/raw/download_manifest.json` (what was updated, last dates, errors). It disables SSL verification for the CONAGUA/CONABIO hosts.
+
+Stages 1 and 2 keep per-municipality parquet partitions (`data/interim/meteorological_information/mun_id=*/`, `data/interim/meteorological_features/mun_id=*/`). A partition is recomputed only when its source is newer than it (`src.data.utils.is_stale`, mtime-based like `make`), so an interrupted run resumes and a `--refresh` propagates; partitions are written with `existing_data_behavior='delete_matching'` so reruns replace rather than append rows. The neighbour graph is reused while `municipal_data.pkl` is unchanged. `--force` bypasses the staleness check.
 
 ## Linting
 
@@ -105,7 +107,6 @@ seguia/
 - `general_pipeline.py`: Automate periodic data updates (currently manual).
 - `src/demo/app.py`: Add threshold visualization to the prediction map.
 - `src/models/evaluate_model.py`: Evaluation logic not yet implemented.
-- `src/features/`: interim caches (`meteorological_information/`, `meteorological_features/`) are not invalidated when raw NASA data changes after `downloader.py --refresh`.
 
 ## Language Note
 

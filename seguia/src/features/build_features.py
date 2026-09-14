@@ -4,6 +4,7 @@ from pandas.tseries.offsets import DateOffset
 
 from src.data.utils import (
     get_general_path,
+    is_stale,
     join_paths,
     save_as_pickle,
     save_dataframe
@@ -22,6 +23,8 @@ TARGET_DATA_FILE = 'target_datasets.pkl'
 MUNICIPAL_DATA = 'municipal_data.pkl'
 NEIGHBOUR_GRAPH = 'municipal_neighbour_graph.pkl'
 METEOROLOGICAL_FEATURES = 'meteorological_features'
+METEOROLOGICAL_INFORMATION = 'meteorological_information'
+MUN_PARTITION = 'mun_id={}'
 PROCESSED_DROUGTH_DATA_FILE = 'processed_drought_data.parquet'
 INITIAL_FEATURES = 'initial_features.parquet'
 METEOROLOGICAL_AND_INITIAL_FEAT = 'meteorological_and_initial_features.parquet'
@@ -215,7 +218,14 @@ def create_initial_features():
     save_dataframe(feature_files, final_features, 'parquet')
 
 
-def create_meteorological_features():
+def create_meteorological_features(force=False):
+    """Calcula las features moviles de NASA por municipio.
+
+    Solo se recalcula la particion de un municipio si su fuente
+    (`meteorological_information/mun_id=<id>/`) es mas nueva o si no
+    existe, salvo `force=True`. Asi una corrida interrumpida se reanuda y
+    un refresh de datos se propaga.
+    """
     print('Creating meteorological features...')
     general_path = get_general_path()
     municipal_data_path = join_paths(
@@ -225,19 +235,28 @@ def create_meteorological_features():
     municipal_data = pd.read_pickle(municipal_data_path)
     indexes = municipal_data.index
     l_indexes = len(indexes)
-    import os
-    for i, mun_id in enumerate(indexes):
-        cached = join_paths(
-            general_path, INTERIM_DATA, METEOROLOGICAL_FEATURES,
-            f'mun_id={mun_id}'
+    updated, skipped = 0, 0
+    for i, mun_id in enumerate(indexes, start=1):
+        source = join_paths(
+            general_path, INTERIM_DATA, METEOROLOGICAL_INFORMATION,
+            MUN_PARTITION.format(mun_id)
         )
-        if os.path.isdir(cached):
+        target = join_paths(
+            general_path, INTERIM_DATA, METEOROLOGICAL_FEATURES,
+            MUN_PARTITION.format(mun_id)
+        )
+        if not force and not is_stale(target, source):
+            skipped += 1
             continue
         get_rolling_data_partition(mun_id)
+        updated += 1
         print(
             f"Getting meteorological features "
-            f"for: {mun_id},  progress{i}/{l_indexes}"
+            f"for: {mun_id},  progress {i}/{l_indexes}"
         )
+    print(
+        f'[meteorological_features] updated={updated} up-to-date={skipped}.'
+    )
 
 
 def merge_initial_and_meteorological_features():

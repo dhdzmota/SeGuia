@@ -106,8 +106,12 @@ def get_rolling_data_partition(mun_id):
     concatenated_daily_information_rolling_df['mun_id'] = mun_id
     concatenated_daily_information_rolling_df.drop(
         rolling_date, axis=1, inplace=True)
+    # delete_matching reemplaza la particion del municipio en vez de
+    # anexar un archivo mas (evita filas duplicadas entre corridas).
     concatenated_daily_information_rolling_df.to_parquet(
-        meteorological_features_path, partition_cols=['mun_id']
+        meteorological_features_path,
+        partition_cols=['mun_id'],
+        existing_data_behavior='delete_matching',
     )
     return None
 

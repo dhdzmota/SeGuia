@@ -94,3 +94,33 @@ def zeroes_to_cve(cve_digit, zeroes):
 def get_time_from_string(string_date):
     date = datetime.datetime.strptime(string_date, '%Y%m%d')
     return date
+
+
+def newest_mtime(path):
+    """Fecha de modificacion mas reciente de un archivo o de los archivos
+    dentro de un directorio. None si no existe."""
+    if not os.path.exists(path):
+        return None
+    if os.path.isfile(path):
+        return os.path.getmtime(path)
+    mtimes = [
+        os.path.getmtime(os.path.join(root, name))
+        for root, _, files in os.walk(path)
+        for name in files
+    ]
+    return max(mtimes) if mtimes else None
+
+
+def is_stale(target, *sources):
+    """True si `target` debe recalcularse: no existe, esta vacio, o alguna
+    de sus fuentes se modifico despues que el (mismo criterio que `make`).
+    Permite reanudar corridas interrumpidas y, a la vez, propagar los datos
+    nuevos que trae `downloader.py --refresh`."""
+    target_mtime = newest_mtime(target)
+    if target_mtime is None:
+        return True
+    for source in sources:
+        source_mtime = newest_mtime(source)
+        if source_mtime is not None and source_mtime > target_mtime:
+            return True
+    return False
