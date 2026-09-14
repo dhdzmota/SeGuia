@@ -225,7 +225,14 @@ def create_meteorological_features():
     municipal_data = pd.read_pickle(municipal_data_path)
     indexes = municipal_data.index
     l_indexes = len(indexes)
+    import os
     for i, mun_id in enumerate(indexes):
+        cached = join_paths(
+            general_path, INTERIM_DATA, METEOROLOGICAL_FEATURES,
+            f'mun_id={mun_id}'
+        )
+        if os.path.isdir(cached):
+            continue
         get_rolling_data_partition(mun_id)
         print(
             f"Getting meteorological features "

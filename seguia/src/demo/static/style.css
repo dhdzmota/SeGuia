@@ -1,0 +1,68 @@
+/* Leaflet map containers */
+#forecast-map,
+#val-pred-map,
+#val-real-map {
+    min-height: 280px;
+    border-radius: 0.75rem;
+    overflow: hidden;
+}
+
+/* Tooltip styling */
+.leaflet-tooltip {
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    padding: 8px 12px;
+}
+
+/* Spinner */
+.spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid #e2e8f0;
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Gradient legend bar */
+.legend-bar {
+    height: 12px;
+    border-radius: 9999px;
+    background: linear-gradient(to right, #4dac26, #b8e186, #f7e353, #f46d43, #d73027, #a50026);
+}
+
+/* Smooth select transitions */
+select:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+/* Hero gradient text */
+.hero-highlight {
+    background: linear-gradient(135deg, #f7b731, #f46d43);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Card hover */
+.method-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.method-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Sticky nav scroll behavior */
+html {
+    scroll-behavior: smooth;
+}

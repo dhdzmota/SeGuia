@@ -74,6 +74,8 @@ def split_data():
     x_oot = X.loc[general_index_oot]
     y_oot = Y.loc[general_index_oot]
 
+    # Split 60/20/20 (train/dev/test): primero se separa el 20% de test,
+    # y del 80% restante el 75% es train (60% del total) y 25% dev (20%).
     x_train, x_test, y_train, y_test = train_test_split(
         x_train,
         y_train,
@@ -83,7 +85,7 @@ def split_data():
     x_train, x_dev, y_train, y_dev = train_test_split(
         x_train,
         y_train,
-        train_size=0.3,
+        train_size=0.75,
         random_state=RANDOM_SEED
     )
 
