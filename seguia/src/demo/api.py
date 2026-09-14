@@ -9,7 +9,7 @@ Al arrancar calcula una sola vez:
   * la procedencia (fechas de datos, version del modelo, ventana de
     entrenamiento) leida de download_manifest.json, split_info.json y
     models/SeGuia.json;
-  * la geometria municipal, estatal y nacional en WGS84 simplificada.
+  * la geometria municipal, estatal y nacional proyectada (LCC) en km.
 La pagina solo pide GeoJSON por estado/fecha.
 """
 
@@ -43,10 +43,9 @@ SPLIT_INFO = 'split_info.json'
 PRODUCTION_INFO = 'SeGuia.json'
 NON_FEATURE_COLS = ['mun_id', 'standard_date']
 MEXICO_EPSG = "EPSG:6362"
-WGS84 = "EPSG:4326"
-# Tolerancias de simplificacion (grados) para servir geometria ligera.
-MUNICIPAL_SIMPLIFY = 0.008
-STATE_SIMPLIFY = 0.02
+# Tolerancias de simplificacion (metros) para servir geometria ligera.
+MUNICIPAL_SIMPLIFY_M = 900
+STATE_SIMPLIFY_M = 2500
 # Categorias de probabilidad mostradas en la UI (limites inferiores).
 CATEGORY_THRESHOLDS = {'baja': 0.0, 'media': 0.35, 'alta': 0.55}
 
@@ -55,9 +54,8 @@ _here = os.path.dirname(os.path.abspath(__file__))
 
 class _AppState:
     """Estado calculado una vez al arrancar."""
-    muni_wgs84: gpd.GeoDataFrame = None  # index mun_id; nombre, entidad, geom
-    states_geojson: dict = None
-    country_geojson: dict = None
+    geo: dict = None                 # geometria proyectada en km
+    muni_names: pd.DataFrame = None  # index mun_id; nombre, entidad
     forecast_df: pd.DataFrame = None  # mun_id, feature/target_date, prediction
     validation_df: pd.DataFrame = None  # + real_index, real_binary
     validation_dates: list = None  # [{feature_date, target_date, auc, ...}]
@@ -84,6 +82,21 @@ def _fmt(date):
     return pd.Timestamp(date).strftime('%Y-%m-%d')
 
 
+def _bbox_km(bounds):
+    return [round(float(v) / 1000, 1) for v in bounds]
+
+
+def _rings_km(geom):
+    """Anillos exteriores de un (Multi)Polygon como listas [x, y] en km,
+    redondeados a 100 m: suficiente para dibujar y ligero de transmitir."""
+    polygons = geom.geoms if geom.geom_type == 'MultiPolygon' else [geom]
+    return [
+        [[round(x / 1000, 1), round(y / 1000, 1)]
+         for x, y in polygon.exterior.coords]
+        for polygon in polygons if not polygon.is_empty
+    ]
+
+
 def _build_provenance(split_info, manifest, production):
     nasa = (manifest or {}).get('nasa') or {}
     drought = (manifest or {}).get('drought') or {}
@@ -91,7 +104,7 @@ def _build_provenance(split_info, manifest, production):
     nasa_last = nasa.get('last_date_max')
     return {
         'horizon_months': HORIZON_MONTHS,
-        'municipalities': int(len(_state.muni_wgs84)),
+        'municipalities': int(len(_state.muni_names)),
         'data': {
             'conagua_last_date': drought.get('last_date'),
             'nasa_last_date': (
@@ -196,25 +209,41 @@ async def lifespan(app: FastAPI):
         })
     _state.validation_dates = dates
 
-    # ── Geometria: municipios, estados y pais en WGS84 ──────────────────────
+    # ── Geometria en la proyeccion oficial (LCC Mexico, EPSG:6362), en km ─
+    # La pagina dibuja SVG directamente: sin librerias de mapas ni teselas.
     muni_gdf = gpd.GeoDataFrame(muni_info, geometry='geometry')
     if muni_gdf.crs is None:
         muni_gdf = muni_gdf.set_crs(MEXICO_EPSG)
-    muni_gdf = muni_gdf.to_crs(WGS84)
+    muni_gdf = muni_gdf.to_crs(MEXICO_EPSG)
     states = muni_gdf[['entidad_federativa', 'geometry']].dissolve(
         by='entidad_federativa'
     )
-    country = gpd.GeoDataFrame(
-        geometry=[states.geometry.union_all()], crs=WGS84
-    )
-    states['geometry'] = states.geometry.simplify(STATE_SIMPLIFY)
-    country['geometry'] = country.geometry.simplify(STATE_SIMPLIFY)
-    muni_gdf['geometry'] = muni_gdf.geometry.simplify(MUNICIPAL_SIMPLIFY)
-    _state.muni_wgs84 = muni_gdf[
-        ['nombre_municipio', 'entidad_federativa', 'geometry']
-    ]
-    _state.states_geojson = json.loads(states.reset_index().to_json())
-    _state.country_geojson = json.loads(country.to_json())
+    country = gpd.GeoSeries([states.geometry.union_all()], crs=MEXICO_EPSG)
+    _state.geo = {
+        'crs': MEXICO_EPSG,
+        'units': 'km',
+        'bbox': _bbox_km(country.total_bounds),
+        'country': _rings_km(country.iloc[0].simplify(STATE_SIMPLIFY_M)),
+        'states': {
+            name: {
+                'bbox': _bbox_km(geom.bounds),
+                'rings': _rings_km(geom.simplify(STATE_SIMPLIFY_M)),
+            }
+            for name, geom in states.geometry.items()
+        },
+        'municipalities': [
+            {
+                'id': mun_id,
+                'name': row['nombre_municipio'],
+                'state': row['entidad_federativa'],
+                'rings': _rings_km(
+                    row.geometry.simplify(MUNICIPAL_SIMPLIFY_M)
+                ),
+            }
+            for mun_id, row in muni_gdf.iterrows()
+        ],
+    }
+    _state.muni_names = muni_info[['nombre_municipio', 'entidad_federativa']]
 
     _state.stats = _build_provenance(split_info, manifest, production)
     _state.stats['oot_auc_by_date'] = dates
@@ -258,68 +287,53 @@ def stats():
     return _state.stats
 
 
-@app.get("/api/geo/states")
-def geo_states():
-    return JSONResponse(content=_state.states_geojson)
+@app.get("/api/geo")
+def geo():
+    """Toda la geometria de una vez; la pagina la cachea y solo pide
+    valores por municipio en las demas rutas."""
+    return JSONResponse(content=_state.geo)
 
 
-@app.get("/api/geo/country")
-def geo_country():
-    return JSONResponse(content=_state.country_geojson)
-
-
-def _to_geojson(df, value_cols):
-    merged = df.join(_state.muni_wgs84, how='inner')
-    gdf = gpd.GeoDataFrame(
-        merged[
-            ['nombre_municipio', 'entidad_federativa', *value_cols, 'geometry']
-        ],
-        crs=WGS84,
-    )
-    return json.loads(gdf.to_json())
-
-
-@app.get("/api/forecast/map")
-def forecast_map(
-    entity: str = Query(..., description="Estado (entidad federativa)"),
+@app.get("/api/forecast/values")
+def forecast_values(
     date: str = Query(..., description="Fecha objetivo (YYYY-MM-DD)"),
 ):
     df = _state.forecast_df
-    rows = df[df['target_date'] == pd.Timestamp(date)].set_index('mun_id')
-    rows = rows.join(_state.muni_wgs84[['entidad_federativa']], how='inner')
-    rows = rows[rows['entidad_federativa'] == entity]
-    rows = rows.drop(columns='entidad_federativa')
+    rows = df[df['target_date'] == pd.Timestamp(date)]
     if rows.empty:
-        raise HTTPException(
-            404, f"Sin pronostico para {entity!r} en {date!r}."
-        )
-    geojson = _to_geojson(rows[['prediction']], ['prediction'])
-    geojson['meta'] = {
-        'entity': entity,
+        raise HTTPException(404, f"Sin pronostico para {date!r}.")
+    return {
         'target_date': date,
         'feature_date': _fmt(rows['feature_date'].iloc[0]),
-        'n': int(len(rows)),
-        'mean': round(float(rows['prediction'].mean()), 4),
+        'values': {
+            m: round(float(p), 4)
+            for m, p in zip(rows['mun_id'], rows['prediction'])
+        },
     }
-    return JSONResponse(content=geojson)
 
 
-@app.get("/api/validation/map")
-def validation_map(
-    date: str = Query(..., description="Quincena del OOT (YYYY-MM-DD)"),
+@app.get("/api/validation/values")
+def validation_values(
+    date: str = Query(..., description="Quincena OOT (YYYY-MM-DD)"),
 ):
     df = _state.validation_df
-    rows = df[df['feature_date'] == pd.Timestamp(date)].set_index('mun_id')
+    rows = df[df['feature_date'] == pd.Timestamp(date)]
     if rows.empty:
         raise HTTPException(404, f"Sin validacion para {date!r}.")
-    geojson = _to_geojson(
-        rows[['prediction', 'real_index']], ['prediction', 'real_index']
-    )
     info = next(
         d for d in _state.validation_dates if d['feature_date'] == date
     )
-    geojson['meta'] = info
-    return JSONResponse(content=geojson)
+    return {
+        'meta': info,
+        'prediction': {
+            m: round(float(p), 4)
+            for m, p in zip(rows['mun_id'], rows['prediction'])
+        },
+        'real_index': {
+            m: (None if pd.isna(v) else int(v))
+            for m, v in zip(rows['mun_id'], rows['real_index'])
+        },
+    }
 
 
 if __name__ == "__main__":
