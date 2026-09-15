@@ -316,10 +316,21 @@ if os.path.isdir(_refs):
 
 # ── Rutas ────────────────────────────────────────────────────────────────────
 
+def _static_version():
+    """Cambia cuando cambia cualquier archivo de static/: la plantilla lo
+    usa como ?v= para que el navegador no sirva JS/CSS viejos de cache."""
+    static_dir = os.path.join(_here, "static")
+    return str(int(max(
+        os.path.getmtime(os.path.join(static_dir, f))
+        for f in os.listdir(static_dir)
+    )))
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse(
-        request, "index.html", {"stats": _state.stats}
+        request, "index.html",
+        {"stats": _state.stats, "v": _static_version()},
     )
 
 
