@@ -4,7 +4,8 @@
   --sand: #E4C9A8; --paper: #F7F1E7; --paper-deep: #EDE4D4; --white: #FFFFFF;
   --ochre: #C8912E; --ochre-deep: #9C6C17; --focus: #1F5F8B;
   --line: rgba(11, 42, 56, 0.14);
-  --p0: #FBEFC6; --p1: #F1C46B; --p2: #DC8F2A; --p3: #B85C12; --p4: #7F3408;
+  /* escala de sequía: verde (sin sequía) → amarillo → naranja → rojo vivo → café (D4) */
+  --p0: #7DBE6E; --p1: #F2DE5A; --p2: #F39A22; --p3: #DE2A15; --p4: #6B2A0E;
   --display: 'Chonburi', 'Georgia', serif;
   --body: 'Quattrocento Sans', 'Segoe UI', system-ui, sans-serif;
   --wrap: 1180px;
@@ -76,9 +77,11 @@ h1 { font-size: clamp(2.4rem, 5.2vw, 4.2rem); margin-bottom: 20px; }
 .field > span { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-mute); }
 .field select { font: inherit; padding: 9px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--white); color: var(--ink); min-width: 240px; }
 .legend { flex: 1 1 320px; max-width: 460px; }
-.ramp { height: 12px; border-radius: 3px; background: linear-gradient(90deg, var(--p0) 0 20%, var(--p1) 20% 35%, var(--p2) 35% 55%, var(--p3) 55% 75%, var(--p4) 75% 100%); }
+.ramp { height: 12px; border-radius: 3px; background: linear-gradient(90deg, var(--p0) 0 35%, var(--p1) 35% 45%, var(--p2) 45% 55%, var(--p3) 55% 75%, var(--p4) 75% 100%); }
 .ramp-pct { background: linear-gradient(90deg, var(--p0) 0 50%, var(--p1) 50% 80%, var(--p2) 80% 90%, var(--p3) 90% 95%, var(--p4) 95% 100%); }
 .legend-ticks { display: grid; grid-template-columns: 35fr 20fr 45fr; font-size: .85rem; margin-top: 5px; color: var(--ink-soft); }
+.legend-ticks span:nth-child(2) { text-align: center; }
+.legend-ticks span:nth-child(3) { text-align: right; }
 .legend-ticks small { color: var(--ink-mute); }
 
 /* ── Mapas SVG ──────────────────────────────────────────────────────────── */
@@ -105,7 +108,7 @@ h1 { font-size: clamp(2.4rem, 5.2vw, 4.2rem); margin-bottom: 20px; }
 .tally { list-style: none; margin: 0; padding: 10px 14px 12px; border-top: 1px solid var(--line); display: flex; gap: 18px; font-variant-numeric: tabular-nums; font-size: .95rem; }
 .tally li { display: flex; align-items: center; gap: 6px; }
 .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-.swatch-alta { background: var(--p3); } .swatch-media { background: var(--p2); } .swatch-baja { background: var(--p0); border: 1px solid var(--line); }
+.swatch-alta { background: var(--p3); } .swatch-media { background: var(--p2); } .swatch-baja { background: var(--p0); }
 .map-status { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(228, 201, 168, .75); font-weight: 700; }
 
 /* ── Desplegables ───────────────────────────────────────────────────────── */
@@ -160,6 +163,33 @@ h1 { font-size: clamp(2.4rem, 5.2vw, 4.2rem); margin-bottom: 20px; }
 
 /* ── Datos ──────────────────────────────────────────────────────────────── */
 #datos h2, #modelado h2 { margin-bottom: 8px; }
+.sub-h { font-family: var(--body); font-weight: 700; font-size: 1rem; margin: 22px 0 8px; color: var(--ink); }
+.diagram { margin: 8px 0 8px; padding: 18px 20px 10px; background: var(--white); border: 1px solid var(--line); border-radius: 6px; }
+.diagram svg { width: 100%; height: auto; display: block; overflow: visible; }
+.diagram text { font-family: var(--body); font-size: 12px; fill: var(--ink-soft); }
+.diagram .lbl { font-weight: 700; fill: var(--ink); }
+.diagram .yr { fill: var(--ink-mute); }
+.diagram .grid { stroke: var(--line); stroke-width: 1; }
+.diagram .today { stroke: var(--focus); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.diagram .today-lbl { fill: var(--focus); font-weight: 700; }
+.diagram .band-train { fill: var(--ink); }
+.diagram .band-oot { fill: var(--ochre); }
+.diagram .band-data { fill: var(--sand); }
+.diagram .band-forecast { fill: var(--focus); }
+.diagram .band-lbl { fill: var(--white); font-weight: 700; }
+.diagram-note { font-size: .9rem; color: var(--ink-mute); margin: 8px 0 0; }
+.split { display: grid; grid-template-columns: auto 1fr; gap: 16px 22px; align-items: center; margin-bottom: 22px; }
+.split-dots { display: grid; grid-template-columns: repeat(25, 12px); gap: 4px; }
+.split-dots i { aspect-ratio: 1; border-radius: 50%; display: block; }
+.dot-train { background: var(--ink); } .dot-dev { background: var(--ochre); } .dot-test { background: var(--sand); }
+.split-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: .92rem; }
+.split-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.split-legend b { font-variant-numeric: tabular-nums; }
+.uses { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 22px; }
+.uses article { padding: 18px 20px; background: var(--paper); border-left: 4px solid var(--ochre); border-radius: 0 6px 6px 0; }
+.uses h3 { font-family: var(--body); font-weight: 700; font-size: 1rem; margin-bottom: 6px; }
+.uses p { color: var(--ink-soft); font-size: .95rem; margin: 0; }
+.uses .tag { display: inline-block; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ochre-deep); margin-top: 8px; }
 .section-sub { color: var(--ink-mute); margin-bottom: 22px; }
 .model-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(320px, .8fr); gap: 32px; align-items: start; }
 .facts-tight { grid-template-columns: 1fr; gap: 12px; }
@@ -178,7 +208,7 @@ h1 { font-size: clamp(2.4rem, 5.2vw, 4.2rem); margin-bottom: 20px; }
 .site-footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 
 @media (max-width: 900px) {
-  .hero-grid, .forecast-grid, .trust-grid, .compare-grid, .model-grid { grid-template-columns: 1fr; }
+  .hero-grid, .forecast-grid, .trust-grid, .compare-grid, .model-grid, .uses, .split { grid-template-columns: 1fr; }
   .site-nav { display: none; }
   .tick small b { display: none; }
 }

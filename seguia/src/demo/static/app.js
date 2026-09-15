@@ -7,10 +7,12 @@ const DATES = STATS.forecast_dates;
 const CATEGORIES = STATS.categories;
 
 // ── Color ───────────────────────────────────────────────────────────────────
-const RAMP = ['#FBEFC6', '#F1C46B', '#DC8F2A', '#B85C12', '#7F3408'];
-const MSM = ['#F3E9DA', '#FCD37F', '#FFAA00', '#E60000', '#730000'];
+// Verde (sin sequía) → amarillo → naranja → rojo vivo → café (D4).
+const RAMP = ['#7DBE6E', '#F2DE5A', '#F39A22', '#DE2A15', '#6B2A0E'];
+const MSM = RAMP;             // observado: sin sequía/D0, D1, D2, D3, D4
 const NO_DATA = '#D9D2C6';
-const PROB_BREAKS = [0.2, CATEGORIES.media, CATEGORIES.alta, 0.75];
+// Clases del score: baja (<35) verde · media (35–45 amarillo, 45–55 naranja) · alta (55–75 rojo, ≥75 café)
+const PROB_BREAKS = [CATEGORIES.media, (CATEGORIES.media + CATEGORIES.alta) / 2, CATEGORIES.alta, 0.75];
 const PCT_BREAKS = [0.5, 0.8, 0.9, 0.95];
 function classOf(v, breaks) { let i = 0; while (i < breaks.length && v >= breaks[i]) i += 1; return i; }
 function probColor(p) { return p == null ? NO_DATA : RAMP[classOf(p, PROB_BREAKS)]; }
@@ -266,9 +268,54 @@ async function updateValidation() {
 function predTip(id) { const p = validationValues.prediction[id]; return `<b>${MUN_NAME[id]}</b>, ${MUN_STATE[id]}${p == null ? '' : ` · percentil ${Math.round(percentileOf(p) * 100)} · score ${score(p)}`}`; }
 function realTip(id) { const v = validationValues.real_index[id]; return `<b>${MUN_NAME[id]}</b>, ${MUN_STATE[id]} · ${v == null ? 'sin dato' : v >= 1 ? `D${v}` : 'sin sequía o D0'}`; }
 
+// ── Diagrama: ventanas de entrenamiento, evaluación y pronóstico ────────────
+function drawTimeline() {
+  const m = STATS.model;
+  const t = (iso) => new Date(iso).getTime();
+  const start = new Date(m.training_from.slice(0, 4) + '-01-01').getTime();
+  const end = new Date((Number(DATES[DATES.length - 1].slice(0, 4)) + 1) + '-01-01').getTime();
+  const W = 900, padL = 150, padR = 16, rowH = 34, gap = 10, top = 44;
+  const rows = [
+    { label: 'Entrenamiento', from: m.training_from, to: m.training_to, cls: 'band-train', text: `${fmtDate(m.training_from, true)} → ${fmtDate(m.training_to, true)}` },
+    { label: 'Fuera de entrenamiento', from: m.training_to, to: m.oot_to, cls: 'band-oot', text: `${fmtDate(m.oot_to, true)}` },
+    { label: 'Datos observados', from: m.training_from, to: STATS.data.conagua_last_date, cls: 'band-data', text: `CONAGUA al ${fmtDate(STATS.data.conagua_last_date)}` },
+    { label: 'Pronóstico posible', from: DATES[0], to: DATES[DATES.length - 1], cls: 'band-forecast', text: `${fmtDate(DATES[0])} → ${fmtDate(DATES[DATES.length - 1])}` },
+  ];
+  const H = top + rows.length * (rowH + gap) + 8;
+  const x = (iso) => padL + ((t(iso) - start) / (end - start)) * (W - padL - padR);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true">`;
+  for (let yr = new Date(start).getFullYear(); yr <= new Date(end).getFullYear(); yr += 1) {
+    const xx = x(`${yr}-01-01`);
+    svg += `<line class="grid" x1="${xx}" x2="${xx}" y1="${top - 6}" y2="${H - 8}"/><text class="yr" x="${xx + 3}" y="${top - 10}">${yr}</text>`;
+  }
+  rows.forEach((r, i) => {
+    const y = top + i * (rowH + gap);
+    const x1 = x(r.from), x2 = Math.max(x(r.to), x1 + 2);
+    svg += `<text class="lbl" x="${padL - 12}" y="${y + rowH / 2 + 4}" text-anchor="end">${r.label}</text>`;
+    svg += `<rect class="${r.cls}" x="${x1}" y="${y}" width="${x2 - x1}" height="${rowH}" rx="4"/>`;
+    const wide = x2 - x1 > 150;
+    svg += `<text class="${wide ? 'band-lbl' : ''}" x="${wide ? x1 + 10 : x2 + 8}" y="${y + rowH / 2 + 4}">${r.text}</text>`;
+  });
+  const tx = x(STATS.today);
+  svg += `<line class="today" x1="${tx}" x2="${tx}" y1="${top - 6}" y2="${H - 8}"/><text class="today-lbl" x="${tx}" y="${top - 24}" text-anchor="middle">hoy</text>`;
+  document.getElementById('timeline-diagram').innerHTML = svg + '</svg>';
+}
+
+function drawSplitDots() {
+  // 100 puntos = 100 % de las filas de la ventana de entrenamiento, en orden
+  // barajado con semilla fija para transmitir que el reparto es aleatorio.
+  const cls = [...Array(60).fill('dot-train'), ...Array(20).fill('dot-dev'), ...Array(20).fill('dot-test')];
+  let seed = 69;
+  const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  for (let i = cls.length - 1; i > 0; i -= 1) { const j = Math.floor(rnd() * (i + 1)); [cls[i], cls[j]] = [cls[j], cls[i]]; }
+  document.getElementById('split-dots').innerHTML = cls.map((c) => `<i class="${c}"></i>`).join('');
+}
+
 // ── Arranque ────────────────────────────────────────────────────────────────
 (async function init() {
   drawAucChart();
+  drawTimeline();
+  drawSplitDots();
   buildTimeline();
   GEO = await getJSON('/api/geo');
   FLIP_Y = GEO.bbox[3];

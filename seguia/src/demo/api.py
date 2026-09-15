@@ -140,6 +140,7 @@ def _build_provenance(split_info, manifest, production, report):
     params = (report or {}).get('params') or {}
     return {
         'horizon_months': HORIZON_MONTHS,
+        'today': pd.Timestamp.today().strftime('%Y-%m-%d'),
         'municipalities': int(len(_state.muni_names)),
         'data': {
             'conagua_last_date': drought.get('last_date'),

@@ -97,6 +97,24 @@
         </div>
         <div class="map-tooltip" id="tooltip" hidden></div>
 
+        <div class="uses">
+          <article>
+            <h3>Priorizar</h3>
+            <p>Ordena los municipios de un estado por score para decidir dónde vigilar, muestrear o preparar apoyos primero.</p>
+            <span class="tag">Donde el modelo es más confiable: ordenar</span>
+          </article>
+          <article>
+            <h3>Anticipar continuidad</h3>
+            <p>En municipios ya en sequía, un score alto sugiere que seguirá dentro de seis meses; uno bajo, que se disipará.</p>
+            <span class="tag">AUC 0.91–0.97 en esas quincenas</span>
+          </article>
+          <article>
+            <h3>Planear con tiempo</h3>
+            <p>Seis meses de horizonte alcanzan para programas preventivos (PMPMS), abasto y coordinación entre cuencas.</p>
+            <span class="tag">Con cautela ante sequías nuevas</span>
+          </article>
+        </div>
+
         <details class="more">
           <summary>¿Cómo leer el score?</summary>
           <p>Va de 0 a 100 y crece con la probabilidad de que, en esa quincena, el Monitor de Sequía clasifique al municipio en D1 o peor (D0, «anormalmente seco», cuenta como sin sequía).</p>
@@ -159,11 +177,11 @@
             <figcaption><span>Observado por CONAGUA el <span id="val-target-date"></span></span></figcaption>
             <div class="map-box map-box-compare" id="val-real-map"></div>
             <ul class="msm-legend" aria-label="Categorías del Monitor de Sequía">
-              <li><i style="background:#F3E9DA"></i>Sin sequía o D0</li>
-              <li><i style="background:#FCD37F"></i>D1</li>
-              <li><i style="background:#FFAA00"></i>D2</li>
-              <li><i style="background:#E60000"></i>D3</li>
-              <li><i style="background:#730000"></i>D4</li>
+              <li><i style="background:#7DBE6E"></i>Sin sequía o D0</li>
+              <li><i style="background:#F2DE5A"></i>D1 moderada</li>
+              <li><i style="background:#F39A22"></i>D2 severa</li>
+              <li><i style="background:#DE2A15"></i>D3 extrema</li>
+              <li><i style="background:#6B2A0E"></i>D4 excepcional</li>
             </ul>
           </figure>
         </div>
@@ -179,13 +197,26 @@
       <div class="wrap">
         <h2>Modelado</h2>
         <p class="section-sub">Versión {{ stats.model.run_id }} · promovida el <span data-date="{{ stats.model.promoted_at }}"></span></p>
+
+        <h3 class="sub-h">Ventanas de tiempo</h3>
+        <div class="diagram" id="timeline-diagram" role="img" aria-label="Línea de tiempo: entrenamiento, evaluación fuera de entrenamiento, datos observados y ventana de pronóstico"></div>
+        <p class="diagram-note">El modelo aprende de las quincenas de <b>entrenamiento</b>; se califica en las quincenas <b>fuera de entrenamiento</b>, que ya se observaron pero no vio; y puede pronosticar {{ stats.horizon_months }} meses después del último dato observado.</p>
+
+        <h3 class="sub-h">Reparto dentro de la ventana de entrenamiento</h3>
+        <div class="split">
+          <div class="split-dots" id="split-dots" role="img" aria-label="60 % entrenamiento, 20 % validación, 20 % prueba"></div>
+          <ul class="split-legend">
+            <li><i class="dot-train"></i><b>60 %</b> entrenamiento · {{ "{:,}".format(stats.model.rows.train) }} filas</li>
+            <li><i class="dot-dev"></i><b>20 %</b> validación (parada temprana) · {{ "{:,}".format(stats.model.rows.dev) }}</li>
+            <li><i class="dot-test"></i><b>20 %</b> prueba · {{ "{:,}".format(stats.model.rows.test) }}</li>
+            <li class="muted">Reparto aleatorio de municipio-quincenas; las {{ "{:,}".format(stats.model.rows.oot) }} filas fuera de entrenamiento quedan aparte.</li>
+          </ul>
+        </div>
+
         <div class="model-grid">
           <dl class="facts facts-tight">
             <div><dt>Objetivo</dt><dd>Sequía D1 o peor en el Monitor, {{ stats.horizon_months }} meses después de la quincena de referencia</dd></div>
             <div><dt>Unidad</dt><dd>municipio × quincena · {{ "{:,}".format(stats.municipalities) }} municipios</dd></div>
-            <div><dt>Ventana de entrenamiento</dt><dd><span data-date="{{ stats.model.training_from }}"></span> → <span data-date="{{ stats.model.training_to }}"></span></dd></div>
-            <div><dt>Prueba fuera de entrenamiento (OOT)</dt><dd>quincenas posteriores, hasta <span data-date="{{ stats.model.oot_to }}"></span> (últimos 6 meses con respuesta conocida)</dd></div>
-            <div><dt>Reparto dentro de la ventana</dt><dd>60 % entrenamiento · 20 % validación (parada temprana) · 20 % prueba, aleatorio</dd></div>
             <div><dt>Características</dt><dd>{{ stats.model.n_features }} variables: historial del índice de sequía (100 y 190 días), meteorología NASA de 90 días (19 variables × 9 estadísticos), agregados por cuenca y promedios de vecinos de grado 1 y 2</dd></div>
             <div><dt>Algoritmo</dt><dd>XGBoost {{ stats.model.xgboost_version }} · {{ "{:,}".format(stats.model.params.n_estimators) }} árboles (usó {{ "{:,}".format(stats.model.best_iteration + 1) }}) · profundidad {{ stats.model.params.max_depth }} · tasa de aprendizaje {{ stats.model.params.learning_rate }} · regularización L1 {{ stats.model.params.reg_alpha }} / L2 {{ stats.model.params.reg_lambda }} · peso a la clase sequía {{ "%.2f" | format(stats.model.params.scale_pos_weight) }}</dd></div>
             <div><dt>Regla de actualización</dt><dd>Reentrenamiento mensual; el candidato reemplaza al modelo en producción solo si su AUC en OOT no es menor</dd></div>
