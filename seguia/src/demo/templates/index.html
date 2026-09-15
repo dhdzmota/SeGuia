@@ -173,12 +173,12 @@
             <div class="map-box map-box-compare" id="val-pred-map"></div>
             <div class="breaks" id="pct-breaks">
               <p class="breaks-title">Cortes de color por percentil de score <span class="muted">— arrastra las manijas</span></p>
-              <div class="breaks-track">
+              <div class="breaks-track" id="pct-track">
                 <div class="ramp ramp-pct" id="pct-ramp"></div>
-                <input type="range" min="1" max="99" step="1" value="50" data-i="0" aria-label="Corte verde–amarillo" />
-                <input type="range" min="1" max="99" step="1" value="80" data-i="1" aria-label="Corte amarillo–naranja" />
-                <input type="range" min="1" max="99" step="1" value="90" data-i="2" aria-label="Corte naranja–rojo" />
-                <input type="range" min="1" max="99" step="1" value="95" data-i="3" aria-label="Corte rojo–café" />
+                <button type="button" class="handle" data-i="0" style="--c:#F2DE5A" role="slider" aria-label="Corte verde–amarillo" aria-valuemin="1" aria-valuemax="99"></button>
+                <button type="button" class="handle" data-i="1" style="--c:#F39A22" role="slider" aria-label="Corte amarillo–naranja" aria-valuemin="1" aria-valuemax="99"></button>
+                <button type="button" class="handle" data-i="2" style="--c:#DE2A15" role="slider" aria-label="Corte naranja–rojo" aria-valuemin="1" aria-valuemax="99"></button>
+                <button type="button" class="handle" data-i="3" style="--c:#6B2A0E" role="slider" aria-label="Corte rojo–café" aria-valuemin="1" aria-valuemax="99"></button>
               </div>
               <ul class="breaks-labels" id="pct-labels"></ul>
             </div>

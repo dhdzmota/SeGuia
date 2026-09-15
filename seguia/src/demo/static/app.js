@@ -268,32 +268,64 @@ async function updateValidation() {
 // ── Cortes de color del mapa de percentiles (4 manijas) ─────────────────────
 const NAMES = ['verde', 'amarillo', 'naranja', 'rojo', 'café'];
 function initBreaks() {
-  const box = document.getElementById('pct-breaks');
-  const inputs = [...box.querySelectorAll('input[type="range"]')];
+  const track = document.getElementById('pct-track');
+  const handles = [...track.querySelectorAll('.handle')];
   const ramp = document.getElementById('pct-ramp');
   const labels = document.getElementById('pct-labels');
+
+  const repaintMap = () => {
+    if (predMap && validationValues) paint(predMap, (id) => { const p = validationValues.prediction[id]; return p == null ? NO_DATA : RAMP[classOf(percentileOf(p), PCT_BREAKS)]; });
+  };
   const render = () => {
     const b = PCT_BREAKS.map((v) => Math.round(v * 100));
     const stops = [0, ...b, 100];
     ramp.style.background = `linear-gradient(90deg, ${RAMP.map((c, i) => `${c} ${stops[i]}% ${stops[i + 1]}%`).join(', ')})`;
+    handles.forEach((h, i) => { h.style.left = `${b[i]}%`; h.setAttribute('aria-valuenow', b[i]); h.setAttribute('aria-valuetext', `percentil ${b[i]}`); });
     labels.innerHTML = RAMP.map((c, i) => {
       const range = i === 0 ? `&lt; ${stops[1]}` : i === RAMP.length - 1 ? `≥ ${stops[i]}` : `${stops[i]}–${stops[i + 1]}`;
       return `<li><i style="background:${c}"></i>${NAMES[i]} ${range}</li>`;
     }).join('');
   };
-  inputs.forEach((input) => {
-    input.addEventListener('input', () => {
-      const i = Number(input.dataset.i);
-      let v = Number(input.value);
-      // las manijas no se cruzan: cada corte queda entre sus vecinos
-      const lo = i === 0 ? 1 : Math.round(PCT_BREAKS[i - 1] * 100) + 1;
-      const hi = i === inputs.length - 1 ? 99 : Math.round(PCT_BREAKS[i + 1] * 100) - 1;
-      v = Math.min(hi, Math.max(lo, v));
-      input.value = v;
-      PCT_BREAKS[i] = v / 100;
-      render();
-      if (predMap && validationValues) paint(predMap, (id) => { const p = validationValues.prediction[id]; return p == null ? NO_DATA : RAMP[classOf(percentileOf(p), PCT_BREAKS)]; });
+  const setBreak = (i, value) => {
+    // las manijas no se cruzan: cada corte queda entre sus vecinas
+    const lo = i === 0 ? 1 : Math.round(PCT_BREAKS[i - 1] * 100) + 1;
+    const hi = i === handles.length - 1 ? 99 : Math.round(PCT_BREAKS[i + 1] * 100) - 1;
+    const v = Math.min(hi, Math.max(lo, Math.round(value)));
+    if (v === Math.round(PCT_BREAKS[i] * 100)) return;
+    PCT_BREAKS[i] = v / 100;
+    render();
+    repaintMap();
+  };
+
+  handles.forEach((h) => {
+    const i = Number(h.dataset.i);
+    h.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      h.setPointerCapture(ev.pointerId);
+      h.classList.add('is-dragging');
+      h.focus();
     });
+    h.addEventListener('pointermove', (ev) => {
+      if (!h.classList.contains('is-dragging')) return;
+      const r = track.getBoundingClientRect();
+      setBreak(i, ((ev.clientX - r.left) / r.width) * 100);
+    });
+    const stop = () => h.classList.remove('is-dragging');
+    h.addEventListener('pointerup', stop);
+    h.addEventListener('pointercancel', stop);
+    h.addEventListener('keydown', (ev) => {
+      const cur = Math.round(PCT_BREAKS[i] * 100);
+      if (ev.key === 'ArrowLeft' || ev.key === 'ArrowDown') { ev.preventDefault(); setBreak(i, cur - 1); }
+      if (ev.key === 'ArrowRight' || ev.key === 'ArrowUp') { ev.preventDefault(); setBreak(i, cur + 1); }
+    });
+  });
+  // clic en el riel: mueve la manija más cercana
+  track.addEventListener('pointerdown', (ev) => {
+    if (ev.target.classList.contains('handle')) return;
+    const r = track.getBoundingClientRect();
+    const v = ((ev.clientX - r.left) / r.width) * 100;
+    const nearest = PCT_BREAKS.reduce((best, b, i) => (Math.abs(b * 100 - v) < Math.abs(PCT_BREAKS[best] * 100 - v) ? i : best), 0);
+    setBreak(nearest, v);
   });
   render();
 }
