@@ -31,7 +31,7 @@ from src.data.utils import (
     check_if_filepath_exists, get_general_path, join_paths
 )
 from src.models.model_utils import (
-    HORIZON_MONTHS, PROCESSED_DATA, MODEL_PATH,
+    HORIZON_MONTHS, OOT_MONTHS, PROCESSED_DATA, MODEL_PATH,
     read_features, read_xy_set, get_model, predict,
 )
 
@@ -140,6 +140,7 @@ def _build_provenance(split_info, manifest, production, report):
     params = (report or {}).get('params') or {}
     return {
         'horizon_months': HORIZON_MONTHS,
+        'oot_months': OOT_MONTHS,
         'today': pd.Timestamp.today().strftime('%Y-%m-%d'),
         'municipalities': int(len(_state.muni_names)),
         'data': {

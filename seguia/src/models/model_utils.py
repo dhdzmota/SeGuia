@@ -13,8 +13,9 @@ MIN_TRAINING_DATE = '2017-01-01'
 # Meses hacia el futuro que predice el modelo (define el target usado).
 HORIZON_MONTHS = 6
 # Ventana out-of-time: los ultimos meses con target conocido se reservan
-# para evaluar el modelo fuera del periodo de entrenamiento.
-OOT_MONTHS = 6
+# para evaluar el modelo fuera del periodo de entrenamiento. 4 meses: el
+# minimo para juzgar el modelo dejando mas quincenas para entrenar.
+OOT_MONTHS = 4
 TARGET = 'num_drought_index_future'
 PROCESSED_DATA = 'data/processed/'
 MODEL_PATH = 'models/'

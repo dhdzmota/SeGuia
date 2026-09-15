@@ -99,7 +99,7 @@ seguia/
 | Item | Location | Value |
 |---|---|---|
 | Training period | `src/models/model_utils.py` | From 2017-01-01 up to `last_labelled_date − OOT_MONTHS` — derived from data at split time, not hard-coded |
-| OOT (out-of-time) test | `src/models/model_utils.py` | Last `OOT_MONTHS` (6) months of rows whose 6-month target is already known |
+| OOT (out-of-time) test | `src/models/model_utils.py` | Last `OOT_MONTHS` (4, was 6 until 2026-09-14) months of rows whose 6-month target is already known |
 | Train/Dev/Test split | `src/models/split_data.py` | 60/20/20 (random seed 69); rows with <50% non-null features (no NASA data yet) are excluded; summary written to `data/processed/split_info.json` |
 | Feature loading | `src/models/model_utils.py` | `read_features()` reads parquet in 64-column blocks and casts to float32 (`all_features.parquet` is 630K × 770; plain `pd.read_parquet` peaks at ~10 GB, this at ~4 GB). Used by `split_data`, `read_xy_set` and the API |
 | Prediction horizon | Default target | 6 months (`target_6m`) |
