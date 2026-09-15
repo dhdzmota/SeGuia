@@ -21,6 +21,7 @@
     <nav class="site-nav" aria-label="Secciones">
       <a href="#pronostico">Pronóstico</a>
       <a href="#confianza">Confianza</a>
+      <a href="#modelado">Modelado</a>
       <a href="#datos">Datos y versión</a>
     </nav>
   </header>
@@ -33,8 +34,8 @@
           <p class="eyebrow">Alerta temprana de sequía · México</p>
           <h1>Sequía en México,<br />seis meses antes.</h1>
           <p class="lede">
-            Probabilidad, por municipio, de que el Monitor de Sequía reporte
-            <strong>sequía moderada o peor (D1–D4)</strong> dentro de seis meses.
+            Un <strong>score de sequía</strong> por municipio: qué tan probable es que el Monitor de Sequía
+            reporte <strong>sequía moderada o peor (D1–D4)</strong> dentro de seis meses.
           </p>
           <a class="button" href="#pronostico">Ver el pronóstico</a>
         </div>
@@ -68,12 +69,12 @@
               {% endfor %}
             </select>
           </label>
-          <div class="legend" aria-label="Escala de probabilidad">
+          <div class="legend" aria-label="Escala del score">
             <div class="ramp"></div>
             <div class="legend-ticks">
-              <span>baja <small>&lt; {{ (stats.categories.media * 100) | int }} %</small></span>
-              <span>media <small>{{ (stats.categories.media * 100) | int }}–{{ (stats.categories.alta * 100) | int }} %</small></span>
-              <span>alta <small>≥ {{ (stats.categories.alta * 100) | int }} %</small></span>
+              <span>baja <small>score &lt; {{ (stats.categories.media * 100) | int }}</small></span>
+              <span>media <small>{{ (stats.categories.media * 100) | int }}–{{ (stats.categories.alta * 100) | int }}</small></span>
+              <span>alta <small>≥ {{ (stats.categories.alta * 100) | int }}</small></span>
             </div>
           </div>
         </div>
@@ -97,9 +98,9 @@
         <div class="map-tooltip" id="tooltip" hidden></div>
 
         <details class="more">
-          <summary>¿Cómo leer la probabilidad?</summary>
-          <p>Es la probabilidad de que, en esa quincena, el Monitor de Sequía clasifique al municipio en D1 o peor. La categoría D0 («anormalmente seco») cuenta como sin sequía.</p>
-          <p>El modelo está entrenado para no pasar por alto sequías, así que en años húmedos tiende a sobreestimar. Úsala para <em>comparar y priorizar</em> municipios y quincenas, más que como una frecuencia exacta.</p>
+          <summary>¿Cómo leer el score?</summary>
+          <p>Va de 0 a 100 y crece con la probabilidad de que, en esa quincena, el Monitor de Sequía clasifique al municipio en D1 o peor (D0, «anormalmente seco», cuenta como sin sequía).</p>
+          <p><strong>No es una probabilidad.</strong> El modelo se entrena con peso extra a los casos de sequía y no está calibrado, así que un score de 60 no significa «60 % de probabilidad». Sirve para <em>ordenar y comparar</em> municipios y quincenas.</p>
         </details>
       </div>
     </section>
@@ -109,25 +110,26 @@
       <div class="wrap">
         <header class="section-head">
           <h2>¿Cuánto confiar?</h2>
-          <p>Cada quincena fuera de entrenamiento: lo que SeGuía dijo contra lo que CONAGUA reportó seis meses después.</p>
+          <p>Para cada quincena ya observada, comparamos lo que CONAGUA reportó con el score que SeGuía había dado seis meses antes.</p>
         </header>
 
         <div class="trust-grid">
           <figure class="chart-card">
             <figcaption>
-              <span class="chart-title">AUC por quincena</span>
-              <span class="chart-sub">1.0 = perfecto · 0.5 = azar · <span data-date="{{ stats.oot_auc_by_date[0].feature_date }}" data-short></span> a <span data-date="{{ stats.oot_auc_by_date[-1].feature_date }}" data-short></span></span>
+              <span class="chart-title">Municipios con sequía en cada quincena evaluada, y cuántos estaban entre el 10 % de mayor score seis meses antes</span>
+              <span class="chart-sub">evaluado de <span data-date="{{ stats.oot_auc_by_date[0].target_date }}" data-short></span> a <span data-date="{{ stats.oot_auc_by_date[-1].target_date }}" data-short></span></span>
             </figcaption>
-            <div id="auc-chart" class="chart" role="img" aria-label="AUC por quincena"></div>
+            <div id="auc-chart" class="chart" role="img" aria-label="Municipios con sequía anticipados y no anticipados por quincena"></div>
+            <ul class="chart-legend"><li><i class="sw-hit"></i>anticipados (en el 10 % de mayor score)</li><li><i class="sw-miss"></i>no anticipados</li></ul>
             <div class="chart-tooltip" id="auc-tooltip" hidden></div>
           </figure>
           <div class="trust-copy">
-            <p class="big-number"><b>{{ "%.2f" | format(stats.model.metrics.oot.auc) }}</b><span>AUC, {{ stats.oot_auc_by_date | length }} quincenas juntas</span></p>
-            <p><strong>Acierta</strong> cuando ya hay sequía: anticipa si persistirá o se disipará.</p>
-            <p><strong>Falla</strong> cuando la sequía empieza desde cero, como en el verano de 2026.</p>
+            <p class="big-number"><b>{{ "%.2f" | format(stats.model.metrics.oot.auc) }}</b><span>AUC en las {{ stats.oot_auc_by_date | length }} quincenas juntas</span></p>
+            <p><strong>Acierta</strong> con la sequía que ya existe: anticipa si persistirá o se disipará.</p>
+            <p><strong>Falla</strong> con la sequía que empieza desde cero, lejos de cualquier zona seca.</p>
             <details class="more more-dark">
               <summary>¿Qué es el AUC?</summary>
-              <p>Toma al azar un municipio que sí tuvo sequía y otro que no. El AUC es la frecuencia con la que el modelo le dio mayor probabilidad al primero: 1.0 siempre, 0.5 lanzar una moneda.</p>
+              <p>Toma al azar un municipio que sí tuvo sequía y otro que no. El AUC es la frecuencia con la que el modelo le dio mayor score al primero: 1.0 siempre, 0.5 lanzar una moneda.</p>
             </details>
           </div>
         </div>
@@ -137,18 +139,19 @@
             <span>Quincena evaluada</span>
             <select id="validation-select">
               {% for d in stats.oot_auc_by_date %}
-              <option value="{{ d.feature_date }}" data-target="{{ d.target_date }}" data-auc="{{ d.auc }}" data-pos="{{ d.positive_rate }}">
-                {{ d.feature_date }} → {{ d.target_date }}{% if d.auc %} · AUC {{ "%.2f" | format(d.auc) }}{% endif %}
+              <option value="{{ d.feature_date }}" data-i="{{ loop.index0 }}">
+                observado el {{ d.target_date }} · pronóstico del {{ d.feature_date }}{% if d.auc %} · AUC {{ "%.2f" | format(d.auc) }}{% endif %}
               </option>
               {% endfor %}
             </select>
           </label>
-          <p class="compare-catch" id="validation-catch"></p>
         </div>
+        <p class="compare-catch" id="validation-catch"></p>
+        <p class="compare-story" id="validation-story"></p>
 
         <div class="compare-grid">
           <figure class="map-card">
-            <figcaption><span>Riesgo según SeGuía el <span id="val-feature-date"></span></span></figcaption>
+            <figcaption><span>Score de SeGuía el <span id="val-feature-date"></span></span></figcaption>
             <div class="map-box map-box-compare" id="val-pred-map"></div>
             <div class="mini-legend"><div class="ramp ramp-pct"></div><span>percentil &lt; 50</span><span>50–80 · 80–90 · 90–95</span><span>≥ 95</span></div>
           </figure>
@@ -165,8 +168,42 @@
           </figure>
         </div>
         <details class="more more-dark">
-          <summary>¿Por qué el mapa de riesgo muestra percentiles y no probabilidades?</summary>
-          <p>Porque el AUC mide <em>orden</em>, no nivel. El mapa de la izquierda ordena los municipios de esa quincena por la probabilidad que les dio el modelo; la frase de arriba dice cuántos de los que sí tuvieron sequía estaban en el 10 % de mayor riesgo.</p>
+          <summary>¿Por qué el mapa de score muestra percentiles?</summary>
+          <p>Porque lo que se evalúa es el <em>orden</em>: si los municipios que acabaron con sequía estaban entre los de mayor score. El mapa de la izquierda ordena los municipios de esa quincena por su score.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- ══ Modelado ══════════════════════════════════════════════════════ -->
+    <section id="modelado" class="section section-sand">
+      <div class="wrap">
+        <h2>Modelado</h2>
+        <p class="section-sub">Versión {{ stats.model.run_id }} · promovida el <span data-date="{{ stats.model.promoted_at }}"></span></p>
+        <div class="model-grid">
+          <dl class="facts facts-tight">
+            <div><dt>Objetivo</dt><dd>Sequía D1 o peor en el Monitor, {{ stats.horizon_months }} meses después de la quincena de referencia</dd></div>
+            <div><dt>Unidad</dt><dd>municipio × quincena · {{ "{:,}".format(stats.municipalities) }} municipios</dd></div>
+            <div><dt>Ventana de entrenamiento</dt><dd><span data-date="{{ stats.model.training_from }}"></span> → <span data-date="{{ stats.model.training_to }}"></span></dd></div>
+            <div><dt>Prueba fuera de entrenamiento (OOT)</dt><dd>quincenas posteriores, hasta <span data-date="{{ stats.model.oot_to }}"></span> (últimos 6 meses con respuesta conocida)</dd></div>
+            <div><dt>Reparto dentro de la ventana</dt><dd>60 % entrenamiento · 20 % validación (parada temprana) · 20 % prueba, aleatorio</dd></div>
+            <div><dt>Características</dt><dd>{{ stats.model.n_features }} variables: historial del índice de sequía (100 y 190 días), meteorología NASA de 90 días (19 variables × 9 estadísticos), agregados por cuenca y promedios de vecinos de grado 1 y 2</dd></div>
+            <div><dt>Algoritmo</dt><dd>XGBoost {{ stats.model.xgboost_version }} · {{ "{:,}".format(stats.model.params.n_estimators) }} árboles (usó {{ "{:,}".format(stats.model.best_iteration + 1) }}) · profundidad {{ stats.model.params.max_depth }} · tasa de aprendizaje {{ stats.model.params.learning_rate }} · regularización L1 {{ stats.model.params.reg_alpha }} / L2 {{ stats.model.params.reg_lambda }} · peso a la clase sequía {{ "%.2f" | format(stats.model.params.scale_pos_weight) }}</dd></div>
+            <div><dt>Regla de actualización</dt><dd>Reentrenamiento mensual; el candidato reemplaza al modelo en producción solo si su AUC en OOT no es menor</dd></div>
+          </dl>
+          <table class="metrics">
+            <caption>Métricas por conjunto</caption>
+            <thead><tr><th>Conjunto</th><th>Filas</th><th>Con sequía</th><th>AUC</th><th>AUC-PR</th></tr></thead>
+            <tbody>
+              {% for name, label in [('train', 'Entrenamiento'), ('dev', 'Validación'), ('test', 'Prueba'), ('oot', 'Fuera de entrenamiento')] %}
+              {% set m = stats.model.metrics[name] %}
+              <tr{% if name == 'oot' %} class="is-key"{% endif %}><th>{{ label }}</th><td>{{ "{:,}".format(m.rows) }}</td><td>{{ "%.1f" | format(m.positive_rate * 100) }} %</td><td>{{ "%.3f" | format(m.auc) }}</td><td>{{ "%.3f" | format(m.aucpr) }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <details class="more">
+          <summary>¿Por qué la prueba da {{ "%.2f" | format(stats.model.metrics.test.auc) }} y fuera de entrenamiento {{ "%.2f" | format(stats.model.metrics.oot.auc) }}?</summary>
+          <p>El reparto entrenamiento/prueba es aleatorio dentro de la misma ventana: quincenas vecinas del mismo municipio quedan de ambos lados, así que la prueba mide interpolación, no pronóstico. Las quincenas fuera de entrenamiento son posteriores a todo lo visto: esa es la cifra que refleja el uso real.</p>
         </details>
       </div>
     </section>
@@ -181,7 +218,7 @@
         </details>
         <details class="more">
           <summary>Qué modelo es</summary>
-          <p>Árboles con gradiente (XGBoost): 10,000 árboles poco profundos, aprendizaje lento, regularización fuerte y peso extra a los casos de sequía. Devuelve una probabilidad por municipio y quincena.</p>
+          <p>Árboles con gradiente (XGBoost): 10,000 árboles poco profundos, aprendizaje lento, regularización fuerte y peso extra a los casos de sequía. Devuelve un score por municipio y quincena.</p>
         </details>
         <details class="more">
           <summary>Cómo se evalúa y actualiza</summary>
@@ -191,7 +228,7 @@
           <summary>Límites</summary>
           <ul>
             <li>Anticipa mucho mejor la evolución de una sequía existente que el inicio de una nueva.</li>
-            <li>Las probabilidades están sesgadas al alza a propósito; sirven para ordenar y priorizar.</li>
+            <li>El score no está calibrado como probabilidad; sirve para ordenar y priorizar.</li>
             <li>La meteorología llega con unos días de rezago.</li>
           </ul>
         </details>
@@ -208,8 +245,6 @@
           <div><dt>Meteorología</dt><dd><a href="https://power.larc.nasa.gov/" rel="noopener" target="_blank">NASA POWER ↗</a> · 19 variables diarias por municipio · último dato <span data-date="{{ stats.data.nasa_last_date }}"></span></dd></div>
           <div><dt>Límites municipales</dt><dd><a href="http://www.conabio.gob.mx/informacion/gis/" rel="noopener" target="_blank">CONABIO ↗</a> · {{ "{:,}".format(stats.municipalities) }} municipios · 32 estados</dd></div>
           <div><dt>Modelo</dt><dd>versión {{ stats.model.run_id }} · promovido el <span data-date="{{ stats.model.promoted_at }}"></span> · <a href="/api/stats" target="_blank">métricas completas ↗</a></dd></div>
-          <div><dt>Entrenamiento</dt><dd><span data-date="{{ stats.model.training_from }}"></span> → <span data-date="{{ stats.model.training_to }}"></span> · {{ "{:,}".format(stats.model.rows.train) }} municipio-quincenas</dd></div>
-          <div><dt>Fuera de entrenamiento</dt><dd>hasta <span data-date="{{ stats.model.oot_to }}"></span> · {{ "{:,}".format(stats.model.rows.oot) }} municipio-quincenas · AUC {{ "%.3f" | format(stats.model.metrics.oot.auc) }} · AUC-PR {{ "%.3f" | format(stats.model.metrics.oot.aucpr) }}</dd></div>
           <div><dt>Código</dt><dd><a href="https://github.com/dhdzmota/SeGuia" rel="noopener" target="_blank">github.com/dhdzmota/SeGuia ↗</a></dd></div>
         </dl>
       </div>

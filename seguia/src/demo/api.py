@@ -82,6 +82,41 @@ def _fmt(date):
     return pd.Timestamp(date).strftime('%Y-%m-%d')
 
 
+def _summarize_fortnight(feature_date, group):
+    """Resumen de una quincena del OOT: AUC, cuantos municipios tuvieron
+    sequia, cuantos de ellos ya la tenian al pronosticar (persistentes) y
+    cuantos estaban en el 10 % de mayor score (anticipados)."""
+    y, p = group['real_binary'], group['prediction']
+    rank = p.rank(pct=True)
+    positives = group[y == 1]
+    persisting = positives[positives['drought_now'] == 1]
+    new = positives[positives['drought_now'] == 0]
+    new_states = new['state'].value_counts().head(3)
+    return {
+        'feature_date': _fmt(feature_date),
+        'target_date': _fmt(group['target_date'].iloc[0]),
+        'auc': (
+            round(float(roc_auc_score(y, p)), 3) if y.nunique() > 1 else None
+        ),
+        'positive_rate': round(float(y.mean()), 4),
+        'n': int(len(group)),
+        'positives': int(len(positives)),
+        'captured_top10': int((rank[positives.index] >= 0.9).sum()),
+        'persisting': int(len(persisting)),
+        'new': int(len(new)),
+        'new_top_states': [
+            {'state': s, 'n': int(n)} for s, n in new_states.items()
+        ],
+        'mean_percentile_new': (
+            round(float(rank[new.index].mean() * 100)) if len(new) else None
+        ),
+        'mean_percentile_persisting': (
+            round(float(rank[persisting.index].mean() * 100))
+            if len(persisting) else None
+        ),
+    }
+
+
 def _bbox_km(bounds):
     return [round(float(v) / 1000, 1) for v in bounds]
 
@@ -97,11 +132,12 @@ def _rings_km(geom):
     ]
 
 
-def _build_provenance(split_info, manifest, production):
+def _build_provenance(split_info, manifest, production, report):
     nasa = (manifest or {}).get('nasa') or {}
     drought = (manifest or {}).get('drought') or {}
     metrics = (production or {}).get('metrics') or {}
     nasa_last = nasa.get('last_date_max')
+    params = (report or {}).get('params') or {}
     return {
         'horizon_months': HORIZON_MONTHS,
         'municipalities': int(len(_state.muni_names)),
@@ -127,6 +163,16 @@ def _build_provenance(split_info, manifest, production):
                 }
                 for name, values in metrics.items()
             },
+            'n_features': (report or {}).get('n_features'),
+            'best_iteration': (report or {}).get('best_iteration'),
+            'xgboost_version': (report or {}).get('xgboost_version'),
+            'params': {
+                k: params.get(k) for k in (
+                    'n_estimators', 'max_depth', 'learning_rate', 'subsample',
+                    'colsample_bytree', 'reg_alpha', 'reg_lambda', 'gamma',
+                    'scale_pos_weight', 'early_stopping_rounds',
+                ) if k in params
+            },
         },
         'categories': CATEGORY_THRESHOLDS,
     }
@@ -140,6 +186,9 @@ async def lifespan(app: FastAPI):
     split_info = _read_json(join_paths(gp, PROCESSED_DATA, SPLIT_INFO))
     manifest = _read_json(join_paths(gp, DOWNLOAD_MANIFEST))
     production = _read_json(join_paths(gp, MODEL_PATH, PRODUCTION_INFO))
+    report = _read_json(
+        join_paths(gp, (production or {}).get('metrics_file', ''))
+    ) if production else None
 
     features = read_features(
         join_paths(gp, INTERIM_DATA, ALL_FEATURES_FILE)
@@ -189,25 +238,18 @@ async def lifespan(app: FastAPI):
         'prediction': predict(model, x_oot),
         'real_index': real_index,
         'real_binary': y_oot.values,
+        # Si el municipio ya estaba en sequia (D1+) al hacer el pronostico:
+        # separa "persistencia" de "inicio", que es donde falla el modelo.
+        'drought_now': (x_oot['num_drought_index'] >= 1).values.astype(int),
     })
     del features, x_oot, y_oot
-
-    dates = []
-    for feature_date, group in _state.validation_df.groupby('feature_date'):
-        auc = (
-            round(float(roc_auc_score(
-                group['real_binary'], group['prediction']
-            )), 3)
-            if group['real_binary'].nunique() > 1 else None
-        )
-        dates.append({
-            'feature_date': _fmt(feature_date),
-            'target_date': _fmt(group['target_date'].iloc[0]),
-            'auc': auc,
-            'positive_rate': round(float(group['real_binary'].mean()), 4),
-            'n': int(len(group)),
-        })
-    _state.validation_dates = dates
+    _state.validation_df['state'] = _state.validation_df['mun_id'].map(
+        muni_info['entidad_federativa']
+    )
+    _state.validation_dates = [
+        _summarize_fortnight(feature_date, group)
+        for feature_date, group in _state.validation_df.groupby('feature_date')
+    ]
 
     # ── Geometria en la proyeccion oficial (LCC Mexico, EPSG:6362), en km ─
     # La pagina dibuja SVG directamente: sin librerias de mapas ni teselas.
@@ -245,8 +287,10 @@ async def lifespan(app: FastAPI):
     }
     _state.muni_names = muni_info[['nombre_municipio', 'entidad_federativa']]
 
-    _state.stats = _build_provenance(split_info, manifest, production)
-    _state.stats['oot_auc_by_date'] = dates
+    _state.stats = _build_provenance(
+        split_info, manifest, production, report
+    )
+    _state.stats['oot_auc_by_date'] = _state.validation_dates
     _state.stats['forecast_dates'] = sorted(
         _fmt(d) for d in _state.forecast_df['target_date'].unique()
     )

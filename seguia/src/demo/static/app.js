@@ -15,7 +15,7 @@ const PCT_BREAKS = [0.5, 0.8, 0.9, 0.95];
 function classOf(v, breaks) { let i = 0; while (i < breaks.length && v >= breaks[i]) i += 1; return i; }
 function probColor(p) { return p == null ? NO_DATA : RAMP[classOf(p, PROB_BREAKS)]; }
 function category(p) { return p >= CATEGORIES.alta ? 'alta' : p >= CATEGORIES.media ? 'media' : 'baja'; }
-const pct = (p) => `${Math.round(p * 100)} %`;
+const score = (p) => `${Math.round(p * 100)}`;
 
 // ── Fechas ──────────────────────────────────────────────────────────────────
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -75,17 +75,20 @@ function buildMap(container, { bbox, filter = null, withStates = true, aspect = 
     Object.values(GEO.states).forEach((s) => states.appendChild(el('path', { d: ringsToPath(s.rings) }, 'state-line')));
     svg.appendChild(states);
   }
+  const focusHalo = el('path', { d: '' }, 'state-focus-halo');
   const focus = el('path', { d: '' }, 'state-focus');
+  svg.appendChild(focusHalo);
   svg.appendChild(focus);
   container.appendChild(svg);
-  return { svg, paths, focus };
+  return { svg, paths, focus, focusHalo };
 }
 function paint(map, colorOf) {
   Object.entries(map.paths).forEach(([id, p]) => { p.setAttribute('fill', colorOf(id)); });
 }
 function focusState(map, entity) {
-  Object.entries(map.paths).forEach(([id, p]) => p.classList.toggle('is-dim', MUN_STATE[id] !== entity));
-  map.focus.setAttribute('d', entity ? ringsToPath(GEO.states[entity].rings) : '');
+  const d = entity ? ringsToPath(GEO.states[entity].rings) : '';
+  map.focusHalo.setAttribute('d', d);
+  map.focus.setAttribute('d', d);
 }
 
 // ── Tooltip compartido ──────────────────────────────────────────────────────
@@ -142,11 +145,11 @@ const hoverCard = document.getElementById('hover-card');
 function setHover(id) {
   const p = forecastValues && forecastValues.values[id];
   if (p == null) return;
-  hoverCard.innerHTML = `<p class="hover-name">${MUN_NAME[id]}</p><p class="hover-prob">${pct(p)}</p><p class="muted">probabilidad ${category(p)} de sequía D1+</p>`;
+  hoverCard.innerHTML = `<p class="hover-name">${MUN_NAME[id]}</p><p class="hover-prob">${score(p)}</p><p class="muted">score ${category(p)} de sequía D1+</p>`;
 }
 function forecastTip(id) {
   const p = forecastValues && forecastValues.values[id];
-  return `<b>${MUN_NAME[id]}</b>, ${MUN_STATE[id]}${p == null ? '' : ` · ${pct(p)}`}`;
+  return `<b>${MUN_NAME[id]}</b>, ${MUN_STATE[id]}${p == null ? '' : ` · score ${score(p)}`}`;
 }
 
 async function setDate(i) {
@@ -156,7 +159,7 @@ async function setDate(i) {
   forecastValues = await getJSON(`/api/forecast/values?date=${target}`);
   document.getElementById('timeline-label').innerHTML =
     `Pronóstico para el <b>${fmtDate(target)}</b> <small>· hecho con datos al ${fmtDate(forecastValues.feature_date)}</small>`;
-  document.getElementById('national-caption').textContent = `probabilidad de sequía D1+ el ${fmtDate(target)}`;
+  document.getElementById('national-caption').textContent = `score de sequía D1+ el ${fmtDate(target)}`;
   paint(nationalMap, (id) => probColor(forecastValues.values[id]));
   paint(stateMap, (id) => probColor(forecastValues.values[id]));
   updateStateSummary();
@@ -169,7 +172,7 @@ function updateStateSummary() {
   let sum = 0, n = 0;
   ids.forEach((id) => { const p = forecastValues.values[id]; if (p == null) return; tally[category(p)] += 1; sum += p; n += 1; });
   document.getElementById('state-caption').textContent = entity;
-  document.getElementById('state-summary').textContent = `${n} municipios · media ${pct(sum / n)}`;
+  document.getElementById('state-summary').textContent = `${n} municipios · score medio ${score(sum / n)}`;
   ['alta', 'media', 'baja'].forEach((k) => { document.getElementById(`tally-${k}`).textContent = tally[k]; });
   hoverCard.innerHTML = '<p class="muted">Pasa el cursor sobre un municipio.</p>';
 }
@@ -179,27 +182,34 @@ function setState(entity) {
   stateMap = buildMap(document.getElementById('state-map'), {
     bbox: GEO.states[entity].bbox, filter: (m) => m.state === entity, withStates: false, aspect: '1 / 1',
   });
-  stateMap.focus.setAttribute('d', ringsToPath(GEO.states[entity].rings));
+  focusState(stateMap, entity);
   attachHover(stateMap, forecastTip, setHover);
   if (forecastValues) { paint(stateMap, (id) => probColor(forecastValues.values[id])); updateStateSummary(); }
 }
 
-// ── Gráfica de AUC ──────────────────────────────────────────────────────────
+// ── Gráfica: sequías observadas, anticipadas o no ───────────────────────────
+// Eje x = quincena evaluada (cuando se supo la respuesta). Cada barra son los
+// municipios con sequía D1+; la parte oscura, los que seis meses antes ya
+// estaban en el 10 % de mayor score.
 function drawAucChart() {
   const data = STATS.oot_auc_by_date;
-  const W = 640, H = 220, padL = 34, padR = 8, padT = 10, padB = 34;
+  const W = 640, H = 240, padL = 40, padR = 8, padT = 12, padB = 36;
   const iw = W - padL - padR, ih = H - padT - padB, bw = iw / data.length;
-  const y = (v) => padT + ih - v * ih;
+  const max = Math.max(...data.map((d) => d.positives), 1);
+  const step = max > 200 ? 100 : max > 80 ? 50 : max > 40 ? 20 : 10;
+  const top = Math.ceil(max / step) * step;
+  const y = (v) => padT + ih - (v / top) * ih;
   let svg = `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true">`;
-  [0, 0.25, 0.5, 0.75, 1].forEach((t) => {
-    svg += `<line class="axis" x1="${padL}" x2="${W - padR}" y1="${y(t)}" y2="${y(t)}"/><text x="${padL - 6}" y="${y(t) + 4}" text-anchor="end">${t.toFixed(2)}</text>`;
-  });
-  svg += `<line class="ref" x1="${padL}" x2="${W - padR}" y1="${y(0.5)}" y2="${y(0.5)}"/><text class="ref-label" x="${W - padR}" y="${y(0.5) - 5}" text-anchor="end">azar</text>`;
+  for (let t = 0; t <= top; t += step) {
+    svg += `<line class="axis" x1="${padL}" x2="${W - padR}" y1="${y(t)}" y2="${y(t)}"/><text x="${padL - 6}" y="${y(t) + 4}" text-anchor="end">${t}</text>`;
+  }
   data.forEach((d, i) => {
-    const x = padL + i * bw + 3, w = bw - 6, top = y(d.auc ?? 0);
-    svg += `<rect class="bar" data-i="${i}" x="${x}" y="${top}" width="${w}" height="${Math.max(0, y(0) - top)}" rx="3"/>`;
-    svg += `<text x="${x + w / 2}" y="${H - padB + 16}" text-anchor="middle">${fmtDate(d.feature_date).replace(/ \d{4}$/, '')}</text>`;
-    if (i === 0 || d.feature_date.slice(0, 4) !== data[i - 1].feature_date.slice(0, 4)) svg += `<text x="${x + w / 2}" y="${H - padB + 30}" text-anchor="middle">${d.feature_date.slice(0, 4)}</text>`;
+    const x = padL + i * bw + 3, w = bw - 6;
+    const hit = d.captured_top10, miss = d.positives - d.captured_top10;
+    svg += `<rect class="bar bar-miss" data-i="${i}" x="${x}" y="${y(d.positives)}" width="${w}" height="${Math.max(0, y(hit) - y(d.positives))}" rx="3"/>`;
+    svg += `<rect class="bar bar-hit-part" data-i="${i}" x="${x}" y="${y(hit)}" width="${w}" height="${Math.max(0, y(0) - y(hit))}" rx="2"/>`;
+    svg += `<text x="${x + w / 2}" y="${H - padB + 16}" text-anchor="middle">${fmtDate(d.target_date).replace(/ \d{4}$/, '')}</text>`;
+    if (i === 0 || d.target_date.slice(0, 4) !== data[i - 1].target_date.slice(0, 4)) svg += `<text x="${x + w / 2}" y="${H - padB + 30}" text-anchor="middle">${d.target_date.slice(0, 4)}</text>`;
     svg += `<rect class="bar-hit" data-i="${i}" x="${padL + i * bw}" y="${padT}" width="${bw}" height="${ih}"/>`;
   });
   const host = document.getElementById('auc-chart');
@@ -211,12 +221,13 @@ function drawAucChart() {
       const d = data[Number(hit.dataset.i)];
       bars.forEach((b) => b.classList.toggle('is-active', b.dataset.i === hit.dataset.i));
       tip.hidden = false;
-      tip.innerHTML = `<b>${fmtDate(d.feature_date)}</b> → ${fmtDate(d.target_date)}<br>AUC <b>${d.auc?.toFixed(3) ?? '—'}</b> · con sequía: ${(d.positive_rate * 100).toFixed(1)} %`;
+      tip.innerHTML = `<b>Observado el ${fmtDate(d.target_date)}</b> · pronóstico del ${fmtDate(d.feature_date)}<br>${d.positives} municipios con sequía · ${d.captured_top10} anticipados (${d.positives ? Math.round((d.captured_top10 / d.positives) * 100) : 0} %)<br>${d.persisting} ya estaban en sequía al pronosticar · AUC ${d.auc?.toFixed(2) ?? '—'}`;
       const r = host.getBoundingClientRect();
       tip.style.left = `${Math.min(ev.clientX - r.left + 12, r.width - tip.offsetWidth)}px`;
       tip.style.top = `${ev.clientY - r.top - 8}px`;
     });
     hit.addEventListener('mouseleave', () => { tip.hidden = true; bars.forEach((b) => b.classList.remove('is-active')); });
+    hit.addEventListener('click', () => { validationSelect.selectedIndex = Number(hit.dataset.i); updateValidation(); document.getElementById('validation-select').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
   });
 }
 
@@ -224,24 +235,35 @@ function drawAucChart() {
 const validationSelect = document.getElementById('validation-select');
 let validationValues = null, percentileOf = null;
 
+function storyFor(d) {
+  if (!d.positives) return 'Esa quincena ningún municipio tuvo sequía D1+.';
+  const parts = [`${d.persisting} de los ${d.positives} ya estaban en sequía cuando se hizo el pronóstico`];
+  if (d.mean_percentile_persisting != null) parts[0] += ` (el modelo los puso en el percentil ${d.mean_percentile_persisting} en promedio)`;
+  if (d.new) {
+    const where = d.new_top_states.map((s) => `${s.state} ${s.n}`).join(', ');
+    parts.push(`${d.new} eran sequías nuevas${where ? ` —sobre todo en ${where}—` : ''} y el modelo las dejó en el percentil ${d.mean_percentile_new}: ${d.mean_percentile_new >= 80 ? 'las vio venir' : d.mean_percentile_new >= 60 ? 'las vio a medias' : 'no las vio venir'}`);
+  }
+  return parts.join('. ') + '.';
+}
+
 async function updateValidation() {
   const opt = validationSelect.selectedOptions[0];
+  const d = STATS.oot_auc_by_date[Number(opt.dataset.i)];
   validationValues = await getJSON(`/api/validation/values?date=${opt.value}`);
-  document.getElementById('val-feature-date').textContent = fmtDate(opt.value);
-  document.getElementById('val-target-date').textContent = fmtDate(opt.dataset.target);
+  document.getElementById('val-feature-date').textContent = fmtDate(d.feature_date);
+  document.getElementById('val-target-date').textContent = fmtDate(d.target_date);
 
   const sorted = Object.values(validationValues.prediction).sort((a, b) => a - b);
   percentileOf = (p) => { let lo = 0, hi = sorted.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (sorted[mid] < p) lo = mid + 1; else hi = mid; } return lo / sorted.length; };
-  const withDrought = Object.entries(validationValues.real_index).filter(([, v]) => v >= 1).map(([id]) => id);
-  const caught = withDrought.filter((id) => percentileOf(validationValues.prediction[id]) >= 0.9).length;
-  document.getElementById('validation-catch').textContent = withDrought.length
-    ? `De los ${withDrought.length} municipios con sequía D1+ el ${fmtDate(opt.dataset.target)}, ${caught} (${Math.round((caught / withDrought.length) * 100)} %) estaban en el 10 % que SeGuía marcó con más riesgo.`
-    : 'Esa quincena ningún municipio tuvo sequía D1+ seis meses después.';
+  document.getElementById('validation-catch').textContent = d.positives
+    ? `El ${fmtDate(d.target_date)} hubo ${d.positives} municipios con sequía D1+; ${d.captured_top10} (${Math.round((d.captured_top10 / d.positives) * 100)} %) estaban en el 10 % de mayor score seis meses antes.`
+    : `El ${fmtDate(d.target_date)} ningún municipio tuvo sequía D1+.`;
+  document.getElementById('validation-story').textContent = storyFor(d);
 
   paint(predMap, (id) => { const p = validationValues.prediction[id]; return p == null ? NO_DATA : RAMP[classOf(percentileOf(p), PCT_BREAKS)]; });
   paint(realMap, (id) => { const v = validationValues.real_index[id]; return v == null ? NO_DATA : MSM[v]; });
 }
-function predTip(id) { const p = validationValues.prediction[id]; return `<b>${MUN_NAME[id]}</b>, ${MUN_STATE[id]}${p == null ? '' : ` · percentil ${Math.round(percentileOf(p) * 100)} · ${pct(p)}`}`; }
+function predTip(id) { const p = validationValues.prediction[id]; return `<b>${MUN_NAME[id]}</b>, ${MUN_STATE[id]}${p == null ? '' : ` · percentil ${Math.round(percentileOf(p) * 100)} · score ${score(p)}`}`; }
 function realTip(id) { const v = validationValues.real_index[id]; return `<b>${MUN_NAME[id]}</b>, ${MUN_STATE[id]} · ${v == null ? 'sin dato' : v >= 1 ? `D${v}` : 'sin sequía o D0'}`; }
 
 // ── Arranque ────────────────────────────────────────────────────────────────
@@ -266,8 +288,8 @@ function realTip(id) { const v = validationValues.real_index[id]; return `<b>${M
   realMap = buildMap(document.getElementById('val-real-map'), { bbox: GEO.bbox });
   attachHover(predMap, predTip);
   attachHover(realMap, realTip);
-  const best = [...validationSelect.options].reduce((a, b) => (Number(b.dataset.auc) > Number(a.dataset.auc) ? b : a));
-  validationSelect.value = best.value;
+  const best = STATS.oot_auc_by_date.reduce((a, b, i) => ((b.auc ?? 0) > (STATS.oot_auc_by_date[a].auc ?? 0) ? i : a), 0);
+  validationSelect.selectedIndex = best;
   validationSelect.addEventListener('change', updateValidation);
   await updateValidation();
 })();

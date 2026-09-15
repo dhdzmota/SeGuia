@@ -2,7 +2,7 @@
 :root {
   --ink: #0B2A38; --ink-soft: #3B5563; --ink-mute: #6F8390;
   --sand: #E4C9A8; --paper: #F7F1E7; --paper-deep: #EDE4D4; --white: #FFFFFF;
-  --ochre: #C8912E; --ochre-deep: #9C6C17;
+  --ochre: #C8912E; --ochre-deep: #9C6C17; --focus: #1F5F8B;
   --line: rgba(11, 42, 56, 0.14);
   --p0: #FBEFC6; --p1: #F1C46B; --p2: #DC8F2A; --p3: #B85C12; --p4: #7F3408;
   --display: 'Chonburi', 'Georgia', serif;
@@ -91,10 +91,11 @@ h1 { font-size: clamp(2.4rem, 5.2vw, 4.2rem); margin-bottom: 20px; }
 .map-box-state svg { height: 100%; }
 .map-box-compare svg { max-height: 420px; }
 .mun { stroke: var(--white); stroke-width: .6px; vector-effect: non-scaling-stroke; transition: opacity .2s; cursor: default; }
-.mun.is-dim { opacity: .28; }
 .mun:hover { stroke: var(--ink); stroke-width: 1.5px; }
 .state-line { fill: none; stroke: rgba(11, 42, 56, .4); stroke-width: .7px; vector-effect: non-scaling-stroke; pointer-events: none; }
-.state-focus { fill: none; stroke: var(--ink); stroke-width: 2px; vector-effect: non-scaling-stroke; pointer-events: none; }
+/* estado elegido: halo blanco + trazo azul que resalta sobre la rampa cálida */
+.state-focus-halo { fill: none; stroke: var(--white); stroke-width: 6px; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+.state-focus { fill: none; stroke: var(--focus); stroke-width: 2.5px; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
 .country { fill: var(--paper-deep); stroke: var(--ink); stroke-width: 1px; vector-effect: non-scaling-stroke; }
 .map-tooltip { position: fixed; z-index: 60; pointer-events: none; background: var(--ink); color: var(--white); padding: 6px 10px; border-radius: 4px; font-size: .9rem; white-space: nowrap; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
 .hover-card { padding: 12px 14px; border-top: 1px solid var(--line); min-height: 74px; }
@@ -128,8 +129,14 @@ h1 { font-size: clamp(2.4rem, 5.2vw, 4.2rem); margin-bottom: 20px; }
 .chart-sub { display: block; font-size: .85rem; margin-top: 2px; }
 .chart { margin-top: 14px; }
 .chart svg { width: 100%; height: auto; display: block; overflow: visible; }
-.chart .bar { fill: var(--sand); }
+.chart .bar-miss { fill: rgba(228, 201, 168, .35); stroke: var(--sand); stroke-width: 1; }
+.chart .bar-hit-part { fill: var(--sand); }
 .chart .bar.is-active { fill: var(--ochre); }
+.chart .bar-miss.is-active { fill: rgba(200, 145, 46, .35); stroke: var(--ochre); }
+.chart-legend { list-style: none; margin: 10px 0 0; padding: 0; display: flex; gap: 18px; font-size: .82rem; color: #B9C7CF; }
+.chart-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.chart-legend .sw-hit { background: var(--sand); }
+.chart-legend .sw-miss { background: rgba(228, 201, 168, .35); border: 1px solid var(--sand); }
 .chart .bar-hit { fill: transparent; }
 .chart .axis { stroke: rgba(255, 255, 255, .18); stroke-width: 1; }
 .chart .ref { stroke: var(--ochre); stroke-width: 1.5; stroke-dasharray: 4 4; }
@@ -142,7 +149,8 @@ h1 { font-size: clamp(2.4rem, 5.2vw, 4.2rem); margin-bottom: 20px; }
 .big-number b { font-family: var(--display); font-size: 3rem; line-height: 1; color: var(--white); font-weight: 400; }
 .big-number span { color: #B9C7CF; font-size: .95rem; }
 .controls-dark .field select { background: #123444; color: #EAF0F3; border-color: rgba(255,255,255,.2); }
-.compare-catch { margin: 0 0 8px; color: var(--sand); font-weight: 700; max-width: 70ch; align-self: center; }
+.compare-catch { margin: 0 0 4px; color: var(--sand); font-weight: 700; max-width: 80ch; }
+.compare-story { margin: 0 0 16px; color: #D7E0E5; max-width: 80ch; }
 .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .mini-legend { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; padding: 10px 14px 12px; font-size: .82rem; color: var(--ink-soft); }
 .mini-legend .ramp { grid-column: 1 / -1; }
@@ -151,7 +159,16 @@ h1 { font-size: clamp(2.4rem, 5.2vw, 4.2rem); margin-bottom: 20px; }
 .msm-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--line); }
 
 /* ── Datos ──────────────────────────────────────────────────────────────── */
-#datos h2 { margin-bottom: 20px; }
+#datos h2, #modelado h2 { margin-bottom: 8px; }
+.section-sub { color: var(--ink-mute); margin-bottom: 22px; }
+.model-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(320px, .8fr); gap: 32px; align-items: start; }
+.facts-tight { grid-template-columns: 1fr; gap: 12px; }
+.metrics { border-collapse: collapse; width: 100%; font-size: .95rem; background: var(--white); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.metrics caption { text-align: left; font-weight: 700; padding: 10px 14px; background: var(--white); border-bottom: 1px solid var(--line); caption-side: top; }
+.metrics th, .metrics td { padding: 8px 14px; text-align: right; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.metrics th:first-child, .metrics td:first-child { text-align: left; }
+.metrics thead th { font-size: .76rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-mute); font-weight: 400; }
+.metrics tr.is-key { background: var(--paper); font-weight: 700; }
 .facts { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px 32px; }
 .facts dt { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-mute); }
 .facts dd { margin: 4px 0 0; }
@@ -161,7 +178,7 @@ h1 { font-size: clamp(2.4rem, 5.2vw, 4.2rem); margin-bottom: 20px; }
 .site-footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 
 @media (max-width: 900px) {
-  .hero-grid, .forecast-grid, .trust-grid, .compare-grid { grid-template-columns: 1fr; }
+  .hero-grid, .forecast-grid, .trust-grid, .compare-grid, .model-grid { grid-template-columns: 1fr; }
   .site-nav { display: none; }
   .tick small b { display: none; }
 }
