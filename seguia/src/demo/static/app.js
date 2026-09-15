@@ -13,7 +13,7 @@ const MSM = RAMP;             // observado: sin sequía/D0, D1, D2, D3, D4
 const NO_DATA = '#D9D2C6';
 // Clases del score: baja (<35) verde · media (35–45 amarillo, 45–55 naranja) · alta (55–75 rojo, ≥75 café)
 const PROB_BREAKS = [CATEGORIES.media, (CATEGORIES.media + CATEGORIES.alta) / 2, CATEGORIES.alta, 0.75];
-const PCT_BREAKS = [0.5, 0.8, 0.9, 0.95];
+let PCT_BREAKS = [0.5, 0.8, 0.9, 0.95];   // editable con las manijas del mapa de validación
 function classOf(v, breaks) { let i = 0; while (i < breaks.length && v >= breaks[i]) i += 1; return i; }
 function probColor(p) { return p == null ? NO_DATA : RAMP[classOf(p, PROB_BREAKS)]; }
 function category(p) { return p >= CATEGORIES.alta ? 'alta' : p >= CATEGORIES.media ? 'media' : 'baja'; }
@@ -265,6 +265,39 @@ async function updateValidation() {
   paint(predMap, (id) => { const p = validationValues.prediction[id]; return p == null ? NO_DATA : RAMP[classOf(percentileOf(p), PCT_BREAKS)]; });
   paint(realMap, (id) => { const v = validationValues.real_index[id]; return v == null ? NO_DATA : MSM[v]; });
 }
+// ── Cortes de color del mapa de percentiles (4 manijas) ─────────────────────
+const NAMES = ['verde', 'amarillo', 'naranja', 'rojo', 'café'];
+function initBreaks() {
+  const box = document.getElementById('pct-breaks');
+  const inputs = [...box.querySelectorAll('input[type="range"]')];
+  const ramp = document.getElementById('pct-ramp');
+  const labels = document.getElementById('pct-labels');
+  const render = () => {
+    const b = PCT_BREAKS.map((v) => Math.round(v * 100));
+    const stops = [0, ...b, 100];
+    ramp.style.background = `linear-gradient(90deg, ${RAMP.map((c, i) => `${c} ${stops[i]}% ${stops[i + 1]}%`).join(', ')})`;
+    labels.innerHTML = RAMP.map((c, i) => {
+      const range = i === 0 ? `&lt; ${stops[1]}` : i === RAMP.length - 1 ? `≥ ${stops[i]}` : `${stops[i]}–${stops[i + 1]}`;
+      return `<li><i style="background:${c}"></i>${NAMES[i]} ${range}</li>`;
+    }).join('');
+  };
+  inputs.forEach((input) => {
+    input.addEventListener('input', () => {
+      const i = Number(input.dataset.i);
+      let v = Number(input.value);
+      // las manijas no se cruzan: cada corte queda entre sus vecinos
+      const lo = i === 0 ? 1 : Math.round(PCT_BREAKS[i - 1] * 100) + 1;
+      const hi = i === inputs.length - 1 ? 99 : Math.round(PCT_BREAKS[i + 1] * 100) - 1;
+      v = Math.min(hi, Math.max(lo, v));
+      input.value = v;
+      PCT_BREAKS[i] = v / 100;
+      render();
+      if (predMap && validationValues) paint(predMap, (id) => { const p = validationValues.prediction[id]; return p == null ? NO_DATA : RAMP[classOf(percentileOf(p), PCT_BREAKS)]; });
+    });
+  });
+  render();
+}
+
 function predTip(id) { const p = validationValues.prediction[id]; return `<b>${MUN_NAME[id]}</b>, ${MUN_STATE[id]}${p == null ? '' : ` · percentil ${Math.round(percentileOf(p) * 100)} · score ${score(p)}`}`; }
 function realTip(id) { const v = validationValues.real_index[id]; return `<b>${MUN_NAME[id]}</b>, ${MUN_STATE[id]} · ${v == null ? 'sin dato' : v >= 1 ? `D${v}` : 'sin sequía o D0'}`; }
 
@@ -316,6 +349,7 @@ function drawSplitDots() {
   drawAucChart();
   drawTimeline();
   drawSplitDots();
+  initBreaks();
   buildTimeline();
   GEO = await getJSON('/api/geo');
   FLIP_Y = GEO.bbox[3];
